@@ -16,11 +16,12 @@ class AiohttpDlTransport:
             http_method: str = "GET",
             concurent_connections: int | None = None,
             headers: dict | None = None,
+            fetch_page_timeout: int = 10,
 
             ):
         ...
 
-    async def fetch_page(session, url):
+    async def fetch_page(self, session, url):
         async with session.get(url, timeout=10) as response:
             response.raise_for_status()
             page_test = await response.text()
