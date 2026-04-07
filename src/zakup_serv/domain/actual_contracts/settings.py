@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 from enum import Enum
 
+class BaseQueryParams:
+    query_param = None
+    value = None
+
+
 # Параметры запроса реестра контрактов ЕИС
 class EISContractsQueryParams(Enum):
     CUSTOMER_REGION = 'customerPlace'
@@ -14,9 +19,8 @@ class EISContractsQueryParams(Enum):
 @dataclass
 class CustomerRegions:
     query_param = EISContractsQueryParams.CUSTOMER_REGION
-    regions = [{
-        "Kostroma region": "44000000000",
-    },
+    regions = [
+        {"Kostroma region": "44000000000",},
     ]
 
 
