@@ -1,19 +1,21 @@
+from zakup_serv.infrastructure.adapters import QueryParamAdapter
+from zakup_serv.settings import EISContractsQueryParams
 
 
 class Region:
     def __init__(self, name: str, region_id: str):
         self.name = name
         self.region_id = region_id
+        self.query_param_name = EISContractsQueryParams.CUSTOMER_REGION.value
+        self.query_param = QueryParamAdapter(self.query_param_name, self.region_id)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name}, {self.region_id})"
+        return f"{self.__class__.__name__}({self.name}, {self.region_id}, {self.query_param})"
 
 
 class ContractRegions:
-    def __init__(self, regions: dict[str, str] | None):
-        self.regions = None
-        if regions:
-            self.regions = self.set_regions(regions)
+    def __init__(self, regions: dict[str, str]):
+        self.regions = self.set_regions(regions)
 
     def __repr__(self):
         if self.regions:

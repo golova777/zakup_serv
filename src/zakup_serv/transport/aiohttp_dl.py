@@ -1,23 +1,16 @@
 import asyncio
-import time
+from typing import Callable
+
 import aiohttp
-from bs4 import BeautifulSoup
-from string import Template
-import re
-import os
-from functools import wraps
 
-
-from zakup_serv.settings import DEFAULTS
+from zakup_serv.domain.actual_contracts.urls import URL
 from zakup_serv.infrastructure.CustomExceptions import NoNewContractsException, NoDataLoaded
 from zakup_serv.transport.base import WebLoaderConfig
 
 
 class AiohttpDlTransport:
-    def __init__(
-            self,
-            config: WebLoaderConfig,
-    ):
+    def __init__(self, config: WebLoaderConfig):
+
         self.urls = config.urls
         self.http_method = config.http_method
         self.concurrent_connections = config.concurrent_connections
@@ -26,23 +19,32 @@ class AiohttpDlTransport:
         self.check_ssl = config.check_ssl
         self.callback_on_result = config.callback_on_result
 
-    async def _download(self, session, url):
+
+    async def _download(self, session, url: URL):
         # возвратит html страницы
+        _download_result = None
+
         if self.http_method == 'GET':
-            async with session.get(url, timeout=self.fetch_page_timeout) as response:
+            async with session.get(url.result_url, timeout=self.fetch_page_timeout) as response:
                 response.raise_for_status()
                 page_text = await response.text()
-                return page_text
+                _download_result = page_text
         elif self.http_method == 'POST':
-            async with session.post(url, timeout=self.fetch_page_timeout) as response:
+            async with session.post(url.result_url, timeout=self.fetch_page_timeout) as response:
                 response.raise_for_status()
                 page_text = await response.text()
-                return page_text
+                _download_result = page_text
         else:
             raise NotImplementedError(f"{self.http_method} не поддерживается в {self.__class__.__name__}")
 
+        # Если задан обработчик результата, то выполним его на полученном ответе
+        if self.callback_on_result and isinstance(self.callback_on_result, Callable):
+            await self.callback_on_result(url.filename, _download_result)
 
-    async def worker(self, url, session, semaphore):
+        return _download_result
+
+
+    async def _worker(self, url: URL, session, semaphore):
         async with semaphore:
             try:
                 response_data = await self._download(session, url)
@@ -53,23 +55,22 @@ class AiohttpDlTransport:
                     raise NoDataLoaded
 
             except Exception as e:
-                print(f"Ошибка при обработке URL {url}: {e}")
+                print(f"Ошибка при обработке URL {url.result_url}: {e}")
                 raise
 
 
-
-    async def fetch_pages(self, urls):
+    async def fetch_pages(self):
         semaphore = asyncio.Semaphore(self.concurrent_connections)
         connector = aiohttp.TCPConnector(ssl=self.check_ssl)
 
         async with aiohttp.ClientSession(headers=self.headers, connector=connector) as session:
-            tasks = [asyncio.create_task(self.worker(url, session, semaphore)) for url in urls]
+            tasks = [asyncio.create_task(self._worker(url, session, semaphore)) for url in self.urls]
 
             try:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 ok, errors = {}, {}
-                for url, res in zip(urls, results):
-                    print(res)
+                for url, res in zip(self.urls, results):
+                    #print(res)
 
                     if isinstance(res, Exception):
                         errors[url] = repr(res)
