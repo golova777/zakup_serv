@@ -5,14 +5,14 @@ from zakup_serv.domain.actual_contracts.query_parameters.pages import Page, PerP
 from zakup_serv.domain.actual_contracts.query_parameters.regions import ContractRegions
 from zakup_serv.domain.actual_contracts.query_parameters.dates import StartDate, EndDate
 from zakup_serv.domain.actual_contracts.query_parameters.prices import MinPrice, MaxPrice
-from zakup_serv.domain.actual_contracts.urls import URL
+from zakup_serv.domain.actual_contracts.urls import URLRequest
 from zakup_serv.infrastructure.result_processors.save_on_disk import SaveOnDisk
+from zakup_serv.settings import DEFAULT_TARGET_URLS
 from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
 from zakup_serv.transport.base import WebLoaderConfig
 
 
 async def async_main():
-    target_url = "https://zakupki.gov.ru/epz/contract/search/results.html?morphology=on&fz44=on&contractStageList_0=on&contractStageList=0&selectedContractDataChanges=ANY&contractPriceFrom=1000&contractPriceTo=500000&budgetLevelsIdNameHidden=%7B%7D&customerPlace=44000000000&contractDateFrom=01.01.2026&contractDateTo=30.03.2026&countryRegIdNameHidden=%7B%7D&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false"
 
     # =======скачивание контрактов (страницы пагинации)
     # 1. подготовить данные для пула запросов (города, дата-интервал, иные параметры)
@@ -26,7 +26,7 @@ async def async_main():
 
     urls = []
     for region in regions:
-        url = URL(target_url)
+        url = URLRequest(DEFAULT_TARGET_URLS['CONTRACTS_44_FZ'])
 
         url.set_params(
             region.query_param,
@@ -37,7 +37,7 @@ async def async_main():
             PerPage(200).query_param,
         )
 
-        for i in range(30):
+        for i in range(15):
             _url = url.copy_url()
             _url.set_params(Page(i + 1).query_param)
             urls.append(_url)
@@ -45,11 +45,13 @@ async def async_main():
 
     web_loader_config = WebLoaderConfig(
         [*urls],
-        callback_on_result=SaveOnDisk().async_save,
+        callback_on_instant_result=SaveOnDisk().async_save,
     )
 
     page_loader = AiohttpDlTransport(web_loader_config)
-    await page_loader.fetch_pages()
+    results = await page_loader.async_fetch_pages()
+
+    print(len(results))
 
     # print(web_loader_config)
 

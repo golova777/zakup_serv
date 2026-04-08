@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum
 
-DEFAULT_URLS = {
+DEFAULT_TARGET_URLS = {
     "CONTRACTS_44_FZ": 'https://zakupki.gov.ru/epz/contract/search/results.html?morphology=on&fz44=on&contractStageList_0=on&contractStageList=0&selectedContractDataChanges=ANY&contractPriceFrom=1000&contractPriceTo=500000&budgetLevelsIdNameHidden=%7B%7D&customerPlace=44000000000&contractDateFrom=01.01.2026&contractDateTo=30.03.2026&countryRegIdNameHidden=%7B%7D&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false',
 }
 
 
 DEFAULTS = {
-    "CONCURRENT_CONNECTIONS": 2,
+    "CONCURRENT_CONNECTIONS": 20,
     "FETCH_PAGE_TIMEOUT": 10,
     "HTTP_METHOD": "GET",
     "CHECK_SSL": False,
