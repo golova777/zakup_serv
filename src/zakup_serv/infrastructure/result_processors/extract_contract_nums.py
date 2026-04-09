@@ -48,5 +48,26 @@ class ContractNumsExtractor(DataProcessorInterface):
 
 
     def process_it(self, result_obj: URLResult) -> URLResult:
-        raise NotImplementedError
+        inner_result_obj = result_obj
+
+        soup = BeautifulSoup(inner_result_obj.request_result, 'lxml')
+
+        contracts_blocs = soup.find_all("div", class_="registry-entry__header-mid__number")
+        contract_links = [contract.find("a").get("href").strip() for contract in contracts_blocs]
+        contract_nums = [re.search(r"reestrNumber=(\d+)", link).group(1) for link in contract_links]
+
+        # print(len(contracts_blocs))
+
+        # добавим только уникальные ссылки
+        if not contract_nums or len(contract_nums) == 0:
+            raise NoNewContractsException(f"На странице не найдено контрактов")
+
+        # new_contract_nums = [item for item in contract_nums if item not in CONTRACT_NUM_GLOBAL]
+        new_contract_nums = [item for item in contract_nums]
+        if len(new_contract_nums) == 0:
+            raise NoNewContractsException(f"На странице не найдено новых контрактов")
+
+        print(f"На странице найдено {len(new_contract_nums)} контрактов")
+
+        return inner_result_obj
 

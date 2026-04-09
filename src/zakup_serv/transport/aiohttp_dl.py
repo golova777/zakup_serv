@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
 import inspect
 
 import aiohttp
@@ -34,14 +35,14 @@ class AiohttpDlTransport(BaseWebLoader):
             async with session.get(url.result_url, timeout=self.fetch_page_timeout) as response:
                 _global_response = response
                 response.raise_for_status()
-                url.actual_request = response
+                #url.actual_request = response  # сохранение aiohttp response не даёь работать pool executor
                 page_text = await response.text()
                 _download_result = page_text
         elif self.http_method == 'POST':
             async with session.post(url.result_url, timeout=self.fetch_page_timeout) as response:
                 _global_response = response
                 response.raise_for_status()
-                url.actual_request = response
+                #url.actual_request = response  # сохранение aiohttp response не даёь работать pool executor
                 page_text = await response.text()
                 _download_result = page_text
         else:
@@ -125,6 +126,24 @@ class AiohttpDlTransport(BaseWebLoader):
                 #####################################################
                 # для синхронного обработчика
                 #####################################################
+                #with ProcessPoolExecutor() as pool:
+                #    return list(pool.map(parse_page, html_pages))
+
+                try:
+                    with ProcessPoolExecutor() as pool:
+                        finished_processed_results = list(
+                            pool.map(
+                                callback,
+                                self.url_results_list
+                            )
+                        )
+
+                except Exception as e:
+                    #  НЕ ПРОПУСТИМ ОШИБОК ОБРАБОТКИ РЕЗУЛЬТАТОВ СКАЧИВАНИЯ
+                    print(f"Ошибка при обработке URL в синхронном обработчике: {e}")
+                    raise
+
+                '''
                 for url_result in self.url_results_list:
                     try:
                         url_result = callback(url_result)
@@ -133,6 +152,7 @@ class AiohttpDlTransport(BaseWebLoader):
                         #  НЕ ПРОПУСТИМ ОШИБОК ОБРАБОТКИ РЕЗУЛЬТАТОВ СКАЧИВАНИЯ
                         print(f"Ошибка при обработке URL {url_result.url_request.result_url} в синхронном обработчике: {e}")
                         raise
+                '''
 
                 # перезапишем self.url_results_list
                 self.url_results_list = finished_processed_results

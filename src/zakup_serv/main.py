@@ -26,9 +26,11 @@ async def async_main():
 
     # обработчики результатов запросов страниц
     result_processors = [
-        ResponseLength().a_process_it,
-        SaveOnDisk().a_process_it,
-        ContractNumsExtractor().a_process_it,
+        #ResponseLength().a_process_it,
+        #ResponseLength().process_it,
+        #SaveOnDisk().a_process_it,
+        #ContractNumsExtractor().a_process_it,
+        ContractNumsExtractor().process_it,
     ]
 
     # 2. для каждого набора (город-даты) найти правильные интервалы пагинации
@@ -46,7 +48,7 @@ async def async_main():
             PerPage(200).query_param,
         )
 
-        for i in range(15):
+        for i in range(20):
             _url = url.copy_url()
             _url.set_params(Page(i + 1).query_param)
             urls.append(_url)
