@@ -6,10 +6,10 @@ import aiohttp
 
 from zakup_serv.domain.actual_contracts.urls import URLRequest, URLResult
 from zakup_serv.infrastructure.CustomExceptions import NoDataLoaded
-from zakup_serv.transport.base import WebLoaderConfig, BaseWebLoaderConfig
+from zakup_serv.transport.base import WebLoaderConfig, BaseWebLoader
 
 
-class AiohttpDlTransport(BaseWebLoaderConfig):
+class AiohttpDlTransport(BaseWebLoader):
     # конструктор полностью заимствуется из базового абстрактного класса
 
     def _load_config(self, config: WebLoaderConfig) -> None:
@@ -19,11 +19,14 @@ class AiohttpDlTransport(BaseWebLoaderConfig):
         self.headers = config.headers
         self.fetch_page_timeout = config.fetch_page_timeout
         self.check_ssl = config.check_ssl
-        self.callback_on_instant_result = config.callback_on_instant_result
-        self.callback_on_final_result = config.callback_on_final_result
+        self.callbacks_list_on_result = config.callbacks_list_on_result
 
-    async def _async_download(self, session, url: URLRequest):
-        # возвратит html страницы
+
+    async def _a_download(self, session, url: URLRequest):
+        ''' возврат сырых данных веб страницы (или эндпоинта API)
+        в виде текста или байтов, в зависимости от типа данных ответа сервера
+        '''
+
         _download_result = None
         _global_response = None
 
@@ -44,56 +47,25 @@ class AiohttpDlTransport(BaseWebLoaderConfig):
         else:
             raise NotImplementedError(f"{self.http_method} пока не поддерживается в {self.__class__.__name__}")
 
-
-
-        if self.callback_on_instant_result and isinstance(self.callback_on_instant_result, Callable):
-            if inspect.iscoroutinefunction(self.callback_on_instant_result):
-                # для асинхронного обработчика
-                url.callback_on_instant_result = await self.callback_on_instant_result(_download_result, url)
-            else:
-                # для простого синхронного обработчика
-                url.callback_on_instant_result = self.callback_on_instant_result(_download_result, url)
-
-
-            await self.callback_on_instant_result(url.filename, _download_result)
-        #####################################################################################
-        #####################################################################################
-        # TODO сделать нормальный отдельный обрабьотчик обратных вызовов на результат запроса
-        # Если задан обработчик результата, то выполним его на полученном ответе
-        if self.callback_on_result and isinstance(self.callback_on_result, Callable):
-            await self.callback_on_result(url.filename, _download_result)
-        #####################################################################################
-        #####################################################################################
-
         return _download_result
 
-    async def a_process_instant_result(self):
-        pass
 
-    def process_instant_result(self):
-        pass
-
-    async def a_process_final_result(self):
-        pass
-
-    def process_final_result(self):
-        pass
-
-
-    async def __async_worker(self, url: URLRequest, session, semaphore):
+    async def _a_worker(self, url: URLRequest, session, semaphore):
         async with semaphore:
             try:
-                response_data = await self._async_download(session, url)
+                response_data = await self._a_download(session, url)
+
 
                 ################################################################
                 ################################################################
-
-                if "6" in url.filename:
-                    print("страница 6 умышленно выдала ошибку")
+                '''
+                if "8" in url.filename:
+                    print("страница 8 умышленно выдала ошибку")
                     raise NoDataLoaded("Исключение: страница 6 умышленно выдала ошибку")
+                '''
+                ################################################################
+                ################################################################
 
-                ################################################################
-                ################################################################
 
                 if response_data:
                     return response_data
@@ -105,27 +77,110 @@ class AiohttpDlTransport(BaseWebLoaderConfig):
                 raise
 
 
+    async def a_process_results(self) -> list[URLResult]:
+        # Обработчики применяются последовательно к набору результатов
+        # каждый обработчик принимает на вход ИСХОДНЫЙ набор результатов URLResult
+
+        callbacks = self.callbacks_list_on_result
+
+        # не задано ни одного обработчика
+        # - вернём исходные результаты
+        if not callbacks:
+            print("Выход. Не задано ни одного обработчика результатов скачивания...")
+            return self.url_results_list
+
+        for callback in callbacks:
+
+            finished_processed_results = []
+
+            if inspect.iscoroutinefunction(callback):
+                #####################################################
+                # для асинхронного обработчика
+                #####################################################
+                tasks = [asyncio.create_task(callback(url_result)) for url_result in self.url_results_list]
+                processed_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                try:
+                    for processed, downloaded in zip(processed_results, self.url_results_list):
+                        if isinstance(processed, Exception):
+                            #  НЕ ПРОПУСТИМ ОШИБОК ОБРАБОТКИ РЕЗУЛЬТАТОВ СКАЧИВАНИЯ
+                            raise processed
+                        else:
+                            finished_processed_results.append(processed)
+
+                    # перезапишем self.url_results_list
+                    self.url_results_list = finished_processed_results
+
+                except Exception as e:
+                    print(f"Ошибка при обработке URL в асинхронном обработчике: {e}")
+                    # отменим незавершившиеся задачи
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    # Дожидаемся завершения отменённых задач
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    raise
+
+            else:
+                #####################################################
+                # для синхронного обработчика
+                #####################################################
+                for url_result in self.url_results_list:
+                    try:
+                        url_result = callback(url_result)
+                        finished_processed_results.append(url_result)
+                    except Exception as e:
+                        #  НЕ ПРОПУСТИМ ОШИБОК ОБРАБОТКИ РЕЗУЛЬТАТОВ СКАЧИВАНИЯ
+                        print(f"Ошибка при обработке URL {url_result.url_request.result_url} в синхронном обработчике: {e}")
+                        raise
+
+                # перезапишем self.url_results_list
+                self.url_results_list = finished_processed_results
+
+
+
+        return self.url_results_list
+
+
+    async def a_run(self) -> list[URLResult]:
+        await self.async_fetch_pages()
+        processed_results = await self.a_process_results()
+
+        return processed_results
+
+
     async def async_fetch_pages(self) -> list[URLResult]:
         semaphore = asyncio.Semaphore(self.concurrent_connections)
         connector = aiohttp.TCPConnector(ssl=self.check_ssl)
 
         async with (aiohttp.ClientSession(headers=self.headers, connector=connector) as session):
-            tasks = [asyncio.create_task(self.__async_worker(url, session, semaphore)) for url in self.urls]
+            tasks = [asyncio.create_task(self._a_worker(url, session, semaphore)) for url in self.urls]
 
             results_list = []  # список результатов запросов (типа URLResult)
 
             try:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                download_results = await asyncio.gather(*tasks, return_exceptions=True)
+                # 1. Создадим объекты URLResult
+                # для всех результатов совершённых запросов
 
-                for url, res in zip(self.urls, results):
-
+                errors = 0 # счётчик ошибок загрузки страниц
+                for url, res_data in zip(self.urls, download_results):
+                    if isinstance(res_data, Exception):
+                        errors += 1
                     # результаты работы загрузчика страниц
-                    result = URLResult(res)
-                    result.set_url_request(url)
+                    # (с включенным объектом запроса URLRequest)
+                    url_result = URLResult(res_data, url)
 
-                    results_list.append(
-                        result
-                    )
+                    results_list.append(url_result)
+
+                # выведем статистику выполнения
+                print(f"==================="
+                      f"Загружено страниц: {len(download_results) - errors} "
+                      f"из {len(download_results)}.\n"
+                      f"ошибок: {errors}")
+
+                #  сохраним список результатов запросов внутри self
+                self.url_results_list = results_list
 
                 return results_list
 
@@ -138,3 +193,4 @@ class AiohttpDlTransport(BaseWebLoaderConfig):
                 await asyncio.gather(*tasks, return_exceptions=True)
                 print("Все задачи остановлены из-за исключения.")
                 raise  # Пробрасываем исключение дальше
+

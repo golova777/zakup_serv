@@ -6,6 +6,8 @@ from zakup_serv.domain.actual_contracts.query_parameters.regions import Contract
 from zakup_serv.domain.actual_contracts.query_parameters.dates import StartDate, EndDate
 from zakup_serv.domain.actual_contracts.query_parameters.prices import MinPrice, MaxPrice
 from zakup_serv.domain.actual_contracts.urls import URLRequest
+from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor
+from zakup_serv.infrastructure.result_processors.response_length import ResponseLength
 from zakup_serv.infrastructure.result_processors.save_on_disk import SaveOnDisk
 from zakup_serv.settings import DEFAULT_TARGET_URLS
 from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
@@ -21,6 +23,13 @@ async def async_main():
     end_date = EndDate("30.03.2026")
     min_price = MinPrice(core_settings.search_min_max_price[0])
     max_price = MaxPrice(core_settings.search_min_max_price[1])
+
+    # обработчики результатов запросов страниц
+    result_processors = [
+        ResponseLength().a_process_it,
+        SaveOnDisk().a_process_it,
+        ContractNumsExtractor().a_process_it,
+    ]
 
     # 2. для каждого набора (город-даты) найти правильные интервалы пагинации
 
@@ -45,15 +54,14 @@ async def async_main():
 
     web_loader_config = WebLoaderConfig(
         [*urls],
-        callback_on_instant_result=SaveOnDisk().async_save,
+        callbacks_list_on_result = result_processors,
     )
 
     page_loader = AiohttpDlTransport(web_loader_config)
-    results = await page_loader.async_fetch_pages()
+    results = await page_loader.a_run()
 
-    print(len(results))
 
-    # print(web_loader_config)
+    print("...")
 
     # 3. для каждого набора (город-даты-интервал пагинации) скачать и сохранить страницы списка контрактов
     # 4. Парсинг: извлечь номера контрактов (ссылки) - сохранить в файл построчно

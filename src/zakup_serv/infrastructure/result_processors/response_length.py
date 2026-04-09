@@ -1,10 +1,19 @@
 import asyncio
 
+from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
+from zakup_serv.domain.actual_contracts.urls import URLRequest, URLResult
 
-async def get_response_length(data: str | bytes | bytearray) -> int:
+
+class ResponseLength(DataProcessorInterface):
     # для тестовых целей - проверка процессинга результатов запросов
 
-    await asyncio.sleep(0)
-    print(f"размер загруженных данных = {len(data)}")
+    async def a_process_it(self, result_obj: URLResult) -> URLResult:
+        inner_result_obj = result_obj
+        print(f"длина {len(inner_result_obj.request_result or  0)}")
 
-    return len(data)
+        return inner_result_obj
+
+
+    def process_it(self, result_obj: URLResult) -> URLResult:
+        raise NotImplementedError
+
