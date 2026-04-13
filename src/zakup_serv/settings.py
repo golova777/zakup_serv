@@ -26,6 +26,9 @@ SAVERS_DEFAULTS = {
 # Регионы поиска
 contract_search_regions = {
     "Kostroma region": "44000000000",
+    #"Yaroslavl region": "76000000000",
+    #"Vladimir region": "33000000000",
+    #"Ivanovo region": "37000000000",
 }
 
 

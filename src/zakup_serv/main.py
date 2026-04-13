@@ -28,9 +28,9 @@ async def async_main():
     result_processors = [
         #ResponseLength().a_process_it,
         #ResponseLength().process_it,
-        #SaveOnDisk().a_process_it,
+        SaveOnDisk().a_process_it,
         #ContractNumsExtractor().a_process_it,
-        ContractNumsExtractor().process_it,
+        #ContractNumsExtractor().process_it,
     ]
 
     # 2. для каждого набора (город-даты) найти правильные интервалы пагинации

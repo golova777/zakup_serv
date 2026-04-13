@@ -8,7 +8,7 @@ from zakup_serv.infrastructure.common_helpers import normalize_signature
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
 from zakup_serv.settings import DEFAULTS
 
-
+# TODO может сюда логику ретраев зашить?
 
 @dataclass
 class WebLoaderConfig:
@@ -66,11 +66,3 @@ class BaseWebLoader(ABC):
     #def fetch_pages(self) -> None:
     #    raise NotImplementedError
 
-
-
-@dataclass
-class ProcessResultsInfo:
-    success_download_tasks: list[URLResult] = field(default_factory=list)
-    failed_download_tasks: list[URLResult] = field(default_factory=list)
-    success_process_tasks: list[URLResult] = field(default_factory=list)
-    failed_process_tasks: list[URLResult] = field(default_factory=list)

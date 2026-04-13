@@ -28,38 +28,68 @@ class AiohttpDlTransport(BaseWebLoader):
         в виде текста или байтов, в зависимости от типа данных ответа сервера
         '''
 
+        # TODO нужно обрабатывать ошибки для политики ретраев ()
+        # Ретраить только временные ошибки: Timeout, ConnectionReset, 503, 502, 429;
+        # не ретраить 400/401/403/404 и ошибки валидации.
+        # TODO как-то определять - нужно ли ретраить или нет.
+        #  и пробрасывать это в блок ретрая решение
+
+        '''
+        Ретраить только временные ошибки: Timeout, ConnectionReset, 503, 502, 429; 
+        не ретраить 400/401/403/404 и ошибки валидации.
+        Использовать exponential backoff + jitter (случайный разброс), чтобы не устроить thundering herd.
+        Ограничивать и попытки, и общее время: max_attempts + max_elapsed_seconds.
+        Учитывать идемпотентность: GET обычно безопасен для повторов, POST —
+         только при idempotency key/гарантиях API.
+        Уважать заголовок Retry-After для 429/503 (если есть) — это важнее вашего локального backoff.
+        Логировать каждую попытку структурно: URL, attempt, причина, задержка, итог.
+        Добавлять “предохранители”: concurrency limit (у вас уже есть semaphore), 
+        circuit breaker (если сервер стабильно падает), rate limit.
+        
+        
+        max_attempts: 3–5
+        base_delay: 0.3–0.7 сек
+        max_delay: 10–30 сек
+        jitter: full jitter (random(0, delay))
+        request timeout: раздельный connect/read/total, а не один общий
+        retry budget: например, не больше 20% запросов в минуту могут быть retry
+        '''
+
         _download_result = None
-        _global_response = None
+        _inner_response = None
 
         if self.http_method == 'GET':
             async with session.get(url.result_url, timeout=self.fetch_page_timeout) as response:
-                _global_response = response
+                _inner_response = response
                 response.raise_for_status()
-                #url.actual_request = response  # сохранение aiohttp response не даёь работать pool executor
                 page_text = await response.text()
                 _download_result = page_text
         elif self.http_method == 'POST':
             async with session.post(url.result_url, timeout=self.fetch_page_timeout) as response:
-                _global_response = response
+                _inner_response = response
                 response.raise_for_status()
-                #url.actual_request = response  # сохранение aiohttp response не даёь работать pool executor
                 page_text = await response.text()
                 _download_result = page_text
         else:
             raise NotImplementedError(f"{self.http_method} пока не поддерживается в {self.__class__.__name__}")
 
+        print(_inner_response.status, url.result_url[:50])
+
         return _download_result
 
 
     async def _a_worker(self, url: URLRequest, session, semaphore):
+
         async with semaphore:
             try:
                 response_data = await self._a_download(session, url)
 
 
                 ################################################################
-                ################################################################
+                #   ПРОВЕРКА НА Ошибки  ###############################################################
                 '''
+                
+                
                 if "8" in url.filename:
                     print("страница 8 умышленно выдала ошибку")
                     raise NoDataLoaded("Исключение: страница 6 умышленно выдала ошибку")
@@ -74,6 +104,7 @@ class AiohttpDlTransport(BaseWebLoader):
                     raise NoDataLoaded("ошибка загрузки данных")
 
             except Exception as e:
+                # TODO нужна политика повторов запросов при ошибках загрузки страниц
                 print(f"Ошибка при обработке URL {url.result_url}: {e}")
                 raise
 
@@ -172,6 +203,7 @@ class AiohttpDlTransport(BaseWebLoader):
     async def async_fetch_pages(self) -> list[URLResult]:
         semaphore = asyncio.Semaphore(self.concurrent_connections)
         connector = aiohttp.TCPConnector(ssl=self.check_ssl)
+        # TODO подключить таймауты корректно
 
         async with (aiohttp.ClientSession(headers=self.headers, connector=connector) as session):
             tasks = [asyncio.create_task(self._a_worker(url, session, semaphore)) for url in self.urls]
@@ -183,21 +215,23 @@ class AiohttpDlTransport(BaseWebLoader):
                 # 1. Создадим объекты URLResult
                 # для всех результатов совершённых запросов
 
-                errors = 0 # счётчик ошибок загрузки страниц
+                # !!! Разбор ошибок запросов должен делать
+                # получатель результата скачивания, а не сам загрузчик
+                error_count = 0
                 for url, res_data in zip(self.urls, download_results):
-                    if isinstance(res_data, Exception):
-                        errors += 1
                     # результаты работы загрузчика страниц
                     # (с включенным объектом запроса URLRequest)
+                    if isinstance(res_data, Exception):
+                        error_count += 1
                     url_result = URLResult(res_data, url)
 
                     results_list.append(url_result)
 
                 # выведем статистику выполнения
                 print(f"==================="
-                      f"Загружено страниц: {len(download_results) - errors} "
-                      f"из {len(download_results)}.\n"
-                      f"ошибок: {errors}")
+                     f"Загружено страниц: {len(download_results) - error_count} "
+                     f"из {len(download_results)}.\n"
+                     f"ошибок: {error_count}")
 
                 #  сохраним список результатов запросов внутри self
                 self.url_results_list = results_list
