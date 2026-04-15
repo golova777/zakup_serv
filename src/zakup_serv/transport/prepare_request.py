@@ -7,5 +7,4 @@ class RequestConstructor:
             regions: ContractRegions,
     ):
         pass
-
 '''

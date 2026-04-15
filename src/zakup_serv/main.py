@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import zakup_serv.settings as core_settings
 from zakup_serv.domain.actual_contracts.query_parameters.pages import Page, PerPage
@@ -6,8 +7,8 @@ from zakup_serv.domain.actual_contracts.query_parameters.regions import Contract
 from zakup_serv.domain.actual_contracts.query_parameters.dates import StartDate, EndDate
 from zakup_serv.domain.actual_contracts.query_parameters.prices import MinPrice, MaxPrice
 from zakup_serv.domain.actual_contracts.urls import URLRequest
+from zakup_serv.infrastructure.logging_config import setup_logging
 from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor
-from zakup_serv.infrastructure.result_processors.response_length import ResponseLength
 from zakup_serv.infrastructure.result_processors.save_on_disk import SaveOnDisk
 from zakup_serv.settings import DEFAULT_TARGET_URLS
 from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
@@ -15,9 +16,14 @@ from zakup_serv.transport.base import WebLoaderConfig
 
 
 async def async_main():
+    # Запуск логирования
+    setup_logging()
+    logger = logging.getLogger(__name__)
 
+    logger.info("Service starting")
     # =======скачивание контрактов (страницы пагинации)
     # 1. подготовить данные для пула запросов (города, дата-интервал, иные параметры)
+
     regions = ContractRegions(core_settings.contract_search_regions).regions
     start_date = StartDate("01.01.2026")
     end_date = EndDate("30.03.2026")
@@ -26,11 +32,11 @@ async def async_main():
 
     # обработчики результатов запросов страниц
     result_processors = [
-        #ResponseLength().a_process_it,
-        #ResponseLength().process_it,
-        SaveOnDisk().a_process_it,
-        #ContractNumsExtractor().a_process_it,
-        #ContractNumsExtractor().process_it,
+        # ResponseLength().a_process_it,
+        # ResponseLength().process_it,
+        # SaveOnDisk().a_process_it,
+        # ContractNumsExtractor().a_process_it,
+        ContractNumsExtractor().process_it,
     ]
 
     # 2. для каждого набора (город-даты) найти правильные интервалы пагинации
@@ -48,22 +54,21 @@ async def async_main():
             PerPage(200).query_param,
         )
 
-        for i in range(20):
+        for i in range(3):
             _url = url.copy_url()
             _url.set_params(Page(i + 1).query_param)
             urls.append(_url)
 
-
     web_loader_config = WebLoaderConfig(
         [*urls],
-        callbacks_list_on_result = result_processors,
+        callbacks_list_on_result=result_processors,
+        proxy=core_settings.DEFAULTS.get('PROXY', None),
     )
 
     page_loader = AiohttpDlTransport(web_loader_config)
-    results = await page_loader.a_run()
+    download_results = await page_loader.a_run()
 
-
-    print("...")
+    logger.info(f"Работа завершена. Получено {len(download_results)} результатов.")
 
     # 3. для каждого набора (город-даты-интервал пагинации) скачать и сохранить страницы списка контрактов
     # 4. Парсинг: извлечь номера контрактов (ссылки) - сохранить в файл построчно

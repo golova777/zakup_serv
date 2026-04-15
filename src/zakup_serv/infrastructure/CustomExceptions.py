@@ -1,5 +1,19 @@
+class RetriableNetworkError(Exception):
+    ''' Ошибка сети, которая может быть повторена.
+    Например, при загрузке страницы возникла ошибка сети,
+    но при повторной попытке она может быть успешно загружена.
+    '''
+    pass
 
 
+class NotRetriableNetworkError(Exception):
+    ''' Ошибка сети, которая не может быть повторена.
+    '''
+    pass
+
+class ExceededRetryAttemptsError(Exception):
+    ''' Исчерпаны попытки скачать страницы'''
+    pass
 
 class NoNewContractsException(Exception):
     ''' Нет новых контрактов при загрузке.
@@ -8,9 +22,9 @@ class NoNewContractsException(Exception):
     '''
     pass
 
+
 class NoDataLoaded(Exception):
     ''' Данные не были загружены, хотя загрузка прошла без ошибок.
     Например, при загрузке страницы не было найдено данных, которые должны были быть там.
     '''
     pass
-

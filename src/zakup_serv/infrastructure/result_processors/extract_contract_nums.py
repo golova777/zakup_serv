@@ -60,14 +60,13 @@ class ContractNumsExtractor(DataProcessorInterface):
 
         # добавим только уникальные ссылки
         if not contract_nums or len(contract_nums) == 0:
-            raise NoNewContractsException(f"На странице не найдено контрактов")
+            raise NoNewContractsException("На странице не найдено контрактов")
 
         # new_contract_nums = [item for item in contract_nums if item not in CONTRACT_NUM_GLOBAL]
         new_contract_nums = [item for item in contract_nums]
         if len(new_contract_nums) == 0:
-            raise NoNewContractsException(f"На странице не найдено новых контрактов")
+            raise NoNewContractsException("На странице не найдено новых контрактов")
 
         print(f"На странице найдено {len(new_contract_nums)} контрактов")
 
         return inner_result_obj
-
