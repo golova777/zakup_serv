@@ -7,7 +7,7 @@ class MinPrice:
         self.min_price = min_price
         self.query_param = QueryParamAdapter(
             param_name=EISContractsQueryParams.CONTRACT_PRICE_FROM.value,
-            param_value=str(self.min_price)
+            param_value=str(self.min_price),
         )
 
     def __repr__(self):
@@ -19,7 +19,7 @@ class MaxPrice:
         self.max_price = max_price
         self.query_param = QueryParamAdapter(
             param_name=EISContractsQueryParams.CONTRACT_PRICE_TO.value,
-            param_value=str(self.max_price)
+            param_value=str(self.max_price),
         )
 
     def __repr__(self):

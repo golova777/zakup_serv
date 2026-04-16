@@ -18,4 +18,3 @@ class ResponseLength(DataProcessorInterface):
         time.sleep(1)
         print(f"длина {len(inner_result_obj.request_result) or 0}")
         return inner_result_obj
-

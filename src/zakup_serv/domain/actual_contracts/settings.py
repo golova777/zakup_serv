@@ -1,4 +1,4 @@
-'''from dataclasses import dataclass
+"""from dataclasses import dataclass
 from enum import Enum
 
 class BaseQueryParams:
@@ -33,4 +33,4 @@ class MaxContractPrice:
     query_param = EISContractsQueryParams.CONTRACT_PRICE_TO
     value = 100000000000
 
-'''
+"""

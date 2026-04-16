@@ -32,16 +32,22 @@ class WebLoaderConfig:
         self.validate_callbacks_signatures()
 
     def validate_callbacks_signatures(self):
-        ref_a_sig = normalize_signature(inspect.signature(DataProcessorInterface.a_process_it))
-        ref_sig = normalize_signature(inspect.signature(DataProcessorInterface.process_it))
+        ref_a_sig = normalize_signature(
+            inspect.signature(DataProcessorInterface.a_process_it)
+        )
+        ref_sig = normalize_signature(
+            inspect.signature(DataProcessorInterface.process_it)
+        )
 
         for callback in self.callbacks_list_on_result:
             callback_sig = normalize_signature(inspect.signature(callback))
             if not (callback_sig == ref_sig or callback_sig == ref_a_sig):
-                print(f"Некорректный обработчик результатов скачивания. "
-                      f"{callback.__name__}"
-                      f"\tпередана сигнатура {callback_sig}\n"
-                      f"\tожидается сигнатура {ref_sig} или {ref_a_sig}\n")
+                print(
+                    f"Некорректный обработчик результатов скачивания. "
+                    f"{callback.__name__}"
+                    f"\tпередана сигнатура {callback_sig}\n"
+                    f"\tожидается сигнатура {ref_sig} или {ref_a_sig}\n"
+                )
                 raise TypeError("Некорректный обработчик результатов скачивания")
 
 

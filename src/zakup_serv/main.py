@@ -5,10 +5,15 @@ import zakup_serv.settings as core_settings
 from zakup_serv.domain.actual_contracts.query_parameters.pages import Page, PerPage
 from zakup_serv.domain.actual_contracts.query_parameters.regions import ContractRegions
 from zakup_serv.domain.actual_contracts.query_parameters.dates import StartDate, EndDate
-from zakup_serv.domain.actual_contracts.query_parameters.prices import MinPrice, MaxPrice
+from zakup_serv.domain.actual_contracts.query_parameters.prices import (
+    MinPrice,
+    MaxPrice,
+)
 from zakup_serv.domain.actual_contracts.urls import URLRequest
 from zakup_serv.infrastructure.logging_config import setup_logging
-from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor
+from zakup_serv.infrastructure.result_processors.extract_contract_nums import (
+    ContractNumsExtractor,
+)
 from zakup_serv.infrastructure.result_processors.save_on_disk import SaveOnDisk
 from zakup_serv.settings import DEFAULT_TARGET_URLS
 from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
@@ -43,7 +48,7 @@ async def async_main():
 
     urls = []
     for region in regions:
-        url = URLRequest(DEFAULT_TARGET_URLS['CONTRACTS_44_FZ'])
+        url = URLRequest(DEFAULT_TARGET_URLS["CONTRACTS_44_FZ"])
 
         url.set_params(
             region.query_param,
@@ -62,7 +67,7 @@ async def async_main():
     web_loader_config = WebLoaderConfig(
         [*urls],
         callbacks_list_on_result=result_processors,
-        proxy=core_settings.DEFAULTS.get('PROXY', None),
+        proxy=core_settings.DEFAULTS.get("PROXY", None),
     )
 
     page_loader = AiohttpDlTransport(web_loader_config)
@@ -84,5 +89,5 @@ async def async_main():
     #
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(async_main())

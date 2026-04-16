@@ -7,7 +7,7 @@ class StartDate:
         self.start_date = start_date
         self.query_param = QueryParamAdapter(
             param_name=EISContractsQueryParams.CONTRACT_DATE_FROM.value,
-            param_value=self.start_date
+            param_value=self.start_date,
         )
 
     def __repr__(self):
@@ -19,12 +19,8 @@ class EndDate:
         self.end_date = end_date
         self.query_param = QueryParamAdapter(
             param_name=EISContractsQueryParams.CONTRACT_DATE_TO.value,
-            param_value=self.end_date
+            param_value=self.end_date,
         )
 
     def __repr__(self):
         return f"{self.__class__.__name__}(end_date={self.end_date}, param_name={self.query_param.param_name})"
-
-
-
-

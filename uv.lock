@@ -145,6 +145,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/0d/52d98722666d6fc6c3dd4c76df339501d6efd40e0ff95e6186a7b7f0befd/black-26.3.1-py3-none-any.whl", hash = "sha256:2bd5aa94fc267d38bb21a70d7410a89f1a1d318841855f698746f8e7f51acd1b", size = 207542, upload-time = "2026-03-12T03:36:01.668Z" },
 ]
 
+[package.optional-dependencies]
+jupyter = [
+    { name = "ipython" },
+    { name = "tokenize-rt" },
+]
+
 [[package]]
 name = "cffi"
 version = "2.0.0"
@@ -206,6 +212,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/4c/13/7d740c5849255756bc17888787313b61fd38a0a8304fc4f073dfc46122aa/comm-0.2.3.tar.gz", hash = "sha256:2dc8048c10962d55d7ad693be1e7045d891b7ce8d999c97963a5e3e99c055971", size = 6319, upload-time = "2025-07-25T14:02:04.452Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/97/891a0971e1e4a8c5d2b20bbe0e524dc04548d2307fee33cdeba148fd4fc7/comm-0.2.3-py3-none-any.whl", hash = "sha256:c615d91d75f7f04f095b30d1c1711babd43bdc6419c1be9886a85f2f4e489417", size = 7294, upload-time = "2025-07-25T14:02:02.896Z" },
+]
+
+[[package]]
+name = "curlparser"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/e2/c1e12c18eed63a64e2e912cbd56f7ba97e498164cfe361797141ea457856/curlparser-0.1.0.tar.gz", hash = "sha256:e6cb7b675ed7c08338f2ce0ba64012aa3b9e908577d1f54c8f5f94a3057099ae", size = 6842, upload-time = "2021-05-30T16:08:10.895Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/95/7064417db2c45b91fab6547c09ec27092ef32ac87d0ac7300d88266da1de/curlparser-0.1.0-py3-none-any.whl", hash = "sha256:3d2020367571fc02dbab0e583ff52a8e31d13e05bbd5dbb893aa75322744f527", size = 7011, upload-time = "2021-05-30T16:08:09.403Z" },
 ]
 
 [[package]]
@@ -937,6 +952,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tokenize-rt"
+version = "6.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/ed/8f07e893132d5051d86a553e749d5c89b2a4776eb3a579b72ed61f8559ca/tokenize_rt-6.2.0.tar.gz", hash = "sha256:8439c042b330c553fdbe1758e4a05c0ed460dbbbb24a606f11f0dee75da4cad6", size = 5476, upload-time = "2025-05-23T23:48:00.035Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/f0/3fe8c6e69135a845f4106f2ff8b6805638d4e85c264e70114e8126689587/tokenize_rt-6.2.0-py2.py3-none-any.whl", hash = "sha256:a152bf4f249c847a66497a4a95f63376ed68ac6abf092a2f7cfb29d044ecff44", size = 6004, upload-time = "2025-05-23T23:47:58.812Z" },
+]
+
+[[package]]
 name = "tornado"
 version = "6.5.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1047,6 +1071,8 @@ dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "beautifulsoup4" },
+    { name = "black", extra = ["jupyter"] },
+    { name = "curlparser" },
     { name = "dotenv" },
     { name = "ipykernel" },
     { name = "lxml" },
@@ -1068,6 +1094,8 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
+    { name = "black", extras = ["jupyter"], specifier = ">=26.3.1" },
+    { name = "curlparser", specifier = ">=0.1.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "lxml", specifier = ">=6.0.2" },

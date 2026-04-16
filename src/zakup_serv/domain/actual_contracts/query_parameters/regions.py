@@ -19,9 +19,7 @@ class ContractRegions:
 
     def __repr__(self):
         if self.regions:
-            return "\n".join([
-                repr(region) for region in self.regions
-            ])
+            return "\n".join([repr(region) for region in self.regions])
         else:
             return []
 
@@ -33,7 +31,9 @@ class ContractRegions:
                 region = Region(region_name, region_id)
                 _regions_objs.append(region)
         except TypeError:
-            raise TypeError("Regions should be a dict with region "
-                            "name as key and region id as value")
+            raise TypeError(
+                "Regions should be a dict with region "
+                "name as key and region id as value"
+            )
 
         return _regions_objs

@@ -1,4 +1,4 @@
-'''from zakup_serv.domain.actual_contracts.query_parameters.regions import ContractRegions
+"""from zakup_serv.domain.actual_contracts.query_parameters.regions import ContractRegions
 
 
 class RequestConstructor:
@@ -7,4 +7,4 @@ class RequestConstructor:
             regions: ContractRegions,
     ):
         pass
-'''
+"""

@@ -2,7 +2,7 @@ from inspect import Signature
 
 
 def normalize_signature(sig: Signature) -> Signature:
-    ''' Убирает self для проверки сходства сигнатур '''
+    """Убирает self для проверки сходства сигнатур"""
 
     params = list(sig.parameters.values())
 
@@ -14,4 +14,3 @@ def normalize_signature(sig: Signature) -> Signature:
         parameters=params,
         return_annotation=sig.return_annotation,
     )
-
