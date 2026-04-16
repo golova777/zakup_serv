@@ -1,12 +1,14 @@
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
 from zakup_serv.infrastructure.adapters import QueryParamAdapter
-from zakup_serv.settings import EISContractsQueryParams
+
+query_params = MARKETPLACE_INFO["44FZ"]["query_params"]
 
 
 class StartDate:
     def __init__(self, start_date):
         self.start_date = start_date
         self.query_param = QueryParamAdapter(
-            param_name=EISContractsQueryParams.CONTRACT_DATE_FROM.value,
+            param_name=query_params.CONTRACT_DATE_FROM.value,
             param_value=self.start_date,
         )
 
@@ -18,7 +20,7 @@ class EndDate:
     def __init__(self, end_date):
         self.end_date = end_date
         self.query_param = QueryParamAdapter(
-            param_name=EISContractsQueryParams.CONTRACT_DATE_TO.value,
+            param_name=query_params.CONTRACT_DATE_TO.value,
             param_value=self.end_date,
         )
 

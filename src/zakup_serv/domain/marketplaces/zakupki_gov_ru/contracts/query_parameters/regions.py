@@ -1,12 +1,14 @@
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
 from zakup_serv.infrastructure.adapters import QueryParamAdapter
-from zakup_serv.settings import EISContractsQueryParams
+
+query_params = MARKETPLACE_INFO["44FZ"]["query_params"]
 
 
 class Region:
     def __init__(self, name: str, region_id: str):
         self.name = name
         self.region_id = region_id
-        self.query_param_name = EISContractsQueryParams.CUSTOMER_REGION.value
+        self.query_param_name = query_params.CUSTOMER_REGION.value
         self.query_param = QueryParamAdapter(self.query_param_name, self.region_id)
 
     def __repr__(self):

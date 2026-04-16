@@ -73,6 +73,9 @@ class URLRequest:
         self.query_params: dict | None = None
         self.filename: str = next(FILENAME_GENERATOR)
 
+        # Иерархия директорий для сохранения результатов (если оно потребуется)
+        self.save_directories: list[str] = list()
+
         self.callback_on_instant_result: Any = None
         self.callback_on_final_result: Any = None
         # Статус и код ответа сервера
@@ -87,12 +90,12 @@ class URLRequest:
     def __repr__(self):
         return self.result_url
 
-    def set_params(self, *args: QueryParamAdapter):
+    def set_query_params(self, *args: Any):
         # Заполним целевой URLRequest новыми параметрами, которые передали в виде аргументов
         # типа адаптера QueryParamAdapter
 
         all_args_have_correct_type = all(
-            [isinstance(arg, QueryParamAdapter) for arg in args]
+            [isinstance(arg.query_param, QueryParamAdapter) for arg in args]
         )
         if all_args_have_correct_type:
             url_parts = list(urlparse(self.result_url))
@@ -106,7 +109,9 @@ class URLRequest:
             self.query_params = query_params
 
             for param in args:
-                query_params[param.param_name] = param.param_value
+                query_params[param.query_param.param_name] = (
+                    param.query_param.param_value
+                )
 
             url_parts[4] = urlencode(query_params)
             self.result_url = urlunparse(url_parts)

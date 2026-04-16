@@ -6,7 +6,10 @@ from typing import Generator, Callable
 import aiohttp
 import logging
 
-from zakup_serv.domain.actual_contracts.urls import URLRequest, URLResult
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+    URLRequest,
+    URLResult,
+)
 from zakup_serv.infrastructure.CustomExceptions import (
     NoDataLoaded,
     RetriableNetworkError,
@@ -24,6 +27,7 @@ class AiohttpDlTransport(BaseWebLoader):
     # конструктор полностью заимствуется из базового абстрактного класса
 
     def _load_config(self, config: WebLoaderConfig) -> None:
+        self.config: WebLoaderConfig = config
         self.urls = config.urls
         self.http_method = config.http_method
         self.concurrent_connections = config.concurrent_connections

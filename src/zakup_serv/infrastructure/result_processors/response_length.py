@@ -1,4 +1,3 @@
-import asyncio
 import time
 
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface

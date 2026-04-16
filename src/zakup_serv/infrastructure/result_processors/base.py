@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 
-from zakup_serv.domain.actual_contracts.urls import URLRequest, URLResult
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+    URLRequest,
+    URLResult,
+)
 
 
 class DataProcessorInterface(ABC):

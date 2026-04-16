@@ -3,7 +3,10 @@ from collections.abc import Callable
 from abc import ABC, abstractmethod
 import inspect
 
-from zakup_serv.domain.actual_contracts.urls import URLRequest, URLResult
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+    URLRequest,
+    URLResult,
+)
 from zakup_serv.infrastructure.common_helpers import normalize_signature
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
 from zakup_serv.settings import DEFAULTS

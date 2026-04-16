@@ -16,22 +16,22 @@ DEFAULT_RETRY_POLICY = {
 }
 
 
-DEFAULT_TARGET_URLS = {
-    "CONTRACTS_44_FZ": "https://zakupki.gov.ru/epz/contract/search/results.html?"
-    "morphology=on&fz44=on&contractStageList_0=on&contractStageList=0&"
-    "selectedContractDataChanges=ANY&contractPriceFrom=1000&"
-    "contractPriceTo=500000&budgetLevelsIdNameHidden=%7B%7D&"
-    "customerPlace=44000000000&contractDateFrom=01.01.2026&"
-    "contractDateTo=30.03.2026&countryRegIdNameHidden=%7B%7D&"
-    "sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&"
-    "recordsPerPage=_10&showLotsInfoHidden=false",
-}
+# DEFAULT_TARGET_URLS = {
+#     "CONTRACTS_44_FZ": "https://zakupki.gov.ru/epz/contract/search/results.html?"
+#     "morphology=on&fz44=on&contractStageList_0=on&contractStageList=0&"
+#     "selectedContractDataChanges=ANY&contractPriceFrom=1000&"
+#     "contractPriceTo=500000&budgetLevelsIdNameHidden=%7B%7D&"
+#     "customerPlace=44000000000&contractDateFrom=01.01.2026&"
+#     "contractDateTo=30.03.2026&countryRegIdNameHidden=%7B%7D&"
+#     "sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&"
+#     "recordsPerPage=_10&showLotsInfoHidden=false",
+# }
 
 
 DEFAULTS = {
     "PROXY": os.getenv("TEXT_PROXY", None),
     "CONCURRENT_CONNECTIONS": 10,
-    "FETCH_PAGE_TIMEOUT": 2000,
+    "FETCH_PAGE_TIMEOUT": 30,
     "HTTP_METHOD": "GET",
     "CHECK_SSL": False,
     "HEADERS": {
@@ -48,22 +48,22 @@ SAVERS_DEFAULTS = {
 
 
 # Регионы поиска
-contract_search_regions = {
-    "Kostroma region": "44000000000",
-    # "Yaroslavl region": "76000000000",
-    # "Vladimir region": "33000000000",
-    # "Ivanovo region": "37000000000",
-}
+# contract_search_regions = {
+#     "Костромская область": "44000000000",
+#     # "Yaroslavl region": "76000000000",
+#     # "Vladimir region": "33000000000",
+#     # "Ivanovo region": "37000000000",
+# }
 
 # Начальный диапазон цены поиска
-search_min_max_price = (0, 100000000000)
+# search_min_max_price = (0, 100000000000)
 
 
-class EISContractsQueryParams(Enum):
-    CUSTOMER_REGION = "customerPlace"
-    CONTRACT_DATE_FROM = "contractDateFrom"
-    CONTRACT_DATE_TO = "contractDateTo"
-    CONTRACT_PRICE_FROM = "contractPriceFrom"
-    CONTRACT_PRICE_TO = "contractPriceTo"
-    PAGE = "pageNumber"
-    PER_PAGE = "recordsPerPage"
+# class EISContractsQueryParams(Enum):
+#     CUSTOMER_REGION = "customerPlace"
+#     CONTRACT_DATE_FROM = "contractDateFrom"
+#     CONTRACT_DATE_TO = "contractDateTo"
+#     CONTRACT_PRICE_FROM = "contractPriceFrom"
+#     CONTRACT_PRICE_TO = "contractPriceTo"
+#     PAGE = "pageNumber"
+#     PER_PAGE = "recordsPerPage"
