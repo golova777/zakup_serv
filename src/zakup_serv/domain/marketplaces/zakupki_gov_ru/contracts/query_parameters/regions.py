@@ -6,13 +6,13 @@ query_params = MARKETPLACE_INFO["44FZ"]["query_params"]
 
 class Region:
     def __init__(self, name: str, region_id: str):
-        self.name = name
+        self.region_name = name
         self.region_id = region_id
         self.query_param_name = query_params.CUSTOMER_REGION.value
         self.query_param = QueryParamAdapter(self.query_param_name, self.region_id)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name}, {self.region_id}, {self.query_param})"
+        return f"{self.__class__.__name__}({self.region_name}, {self.region_id}, {self.query_param})"
 
 
 class ContractRegions:

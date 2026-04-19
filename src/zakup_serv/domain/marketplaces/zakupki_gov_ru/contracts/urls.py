@@ -2,6 +2,13 @@ from typing import Generator, Any
 import logging
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.dates import (
+    StartDate,
+    EndDate,
+)
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.regions import (
+    Region,
+)
 from zakup_serv.infrastructure.adapters import QueryParamAdapter
 
 # Подключим логирование
@@ -70,6 +77,7 @@ class URLRequest:
         self.scheme: str | None = None
         self.domain: str | None = None
         self.path: str | None = None
+        self.query_params_objs = []  # Объёкты параметров
         self.query_params: dict | None = None
         self.filename: str = next(FILENAME_GENERATOR)
 
@@ -83,6 +91,12 @@ class URLRequest:
         self.status_code: int | None = None
         # Секция ретраев
         self.attempt: int = 0
+
+        # Поля опциональные
+        self.region_name: str | None = None
+        self.region_id: str | None = None
+        self.date_from: str | None = None
+        self.date_to: str | None = None
 
     def copy_url(self):
         return URLRequest(self.result_url)
@@ -109,6 +123,18 @@ class URLRequest:
             self.query_params = query_params
 
             for param in args:
+                # Сохраним объекты параметров
+                self.query_params_objs.append(param)
+
+                # попробуем сохранить регион и даты
+                if isinstance(param, Region):
+                    self.region_name = param.region_name
+                    self.region_id = param.region_id
+                elif isinstance(param, StartDate):
+                    self.date_from = param.start_date
+                elif isinstance(param, EndDate):
+                    self.date_to = param.end_date
+
                 query_params[param.query_param.param_name] = (
                     param.query_param.param_value
                 )

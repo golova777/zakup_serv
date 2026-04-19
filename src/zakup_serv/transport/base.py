@@ -9,7 +9,7 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
 )
 from zakup_serv.infrastructure.common_helpers import normalize_signature
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
-from zakup_serv.settings import DEFAULTS
+from zakup_serv.settings import NET_DEFAULTS
 
 # TODO может сюда логику ретраев зашить?
 
@@ -17,11 +17,11 @@ from zakup_serv.settings import DEFAULTS
 @dataclass
 class WebLoaderConfig:
     urls: list[URLRequest] = field(default_factory=list)
-    http_method: str = DEFAULTS["HTTP_METHOD"]
-    concurrent_connections: int = DEFAULTS["CONCURRENT_CONNECTIONS"]
-    headers: dict = field(default_factory=lambda: DEFAULTS["HEADERS"])
-    fetch_page_timeout: int = DEFAULTS["FETCH_PAGE_TIMEOUT"]
-    check_ssl: bool = DEFAULTS["CHECK_SSL"]
+    http_method: str = NET_DEFAULTS["HTTP_METHOD"]
+    concurrent_connections: int = NET_DEFAULTS["CONCURRENT_CONNECTIONS"]
+    headers: dict = field(default_factory=lambda: NET_DEFAULTS["HEADERS"])
+    fetch_page_timeout: int = NET_DEFAULTS["FETCH_PAGE_TIMEOUT"]
+    check_ssl: bool = NET_DEFAULTS["CHECK_SSL"]
     proxy: str | None = None
 
     # список обработчиков результата запроса страницы.

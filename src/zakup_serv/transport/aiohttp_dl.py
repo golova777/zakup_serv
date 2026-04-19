@@ -16,32 +16,24 @@ from zakup_serv.infrastructure.CustomExceptions import (
     NotRetriableNetworkError,
     ExceededRetryAttemptsError,
 )
-from zakup_serv.settings import DEFAULT_RETRY_POLICY
+from zakup_serv.infrastructure.result_processors.decorators import (
+    add_jitter_delay,
+    net_stat_info,
+)
+from zakup_serv.settings import DEFAULT_RETRY_POLICY, NET_DEFAULTS
 from zakup_serv.transport.base import WebLoaderConfig, BaseWebLoader
 
 # Подключим логирование
 logger = logging.getLogger(__name__)
 
+JITTER = NET_DEFAULTS["JITTER"]
+
 
 class AiohttpDlTransport(BaseWebLoader):
     # конструктор полностью заимствуется из базового абстрактного класса
 
-    def _load_config(self, config: WebLoaderConfig) -> None:
-        self.config: WebLoaderConfig = config
-        self.urls = config.urls
-        self.http_method = config.http_method
-        self.concurrent_connections = config.concurrent_connections
-        self.headers = config.headers
-        self.fetch_page_timeout = config.fetch_page_timeout
-        self.check_ssl = config.check_ssl
-        self.proxy = config.proxy
-        self.callbacks_list_on_result = config.callbacks_list_on_result
-
-        # БЛОК ОТЛАДКИ
-        # генератор последовательности HTTP кодов ответов
-        # - для проверки ретраев
-        self.fake_http_code_gen: Callable | None = None
-
+    @net_stat_info()
+    @add_jitter_delay(nu=JITTER["mu"], sigma=JITTER["std"])
     async def _a_download(
         self,
         session,
@@ -115,21 +107,31 @@ class AiohttpDlTransport(BaseWebLoader):
                 exc_info=True,
             )
             raise e
+
+        except (TimeoutError, ConnectionError) as e:
+            logger.exception(
+                # f"Failed download but can RETRY! {type(e)} URL {url.result_url}",
+                f"Failed download but can RETRY! {type(e)}",
+                # exc_info=True,
+            )
+            raise RetriableNetworkError(e)
+
         except Exception as e:
             # Возникла ошибка во время загрузки страницы
             if _inner_response.status in DEFAULT_RETRY_POLICY["status_forcelist"]:
                 # данную ошибку загрузки можно ретраить
                 logger.exception(
-                    f"Failed download but can RETRY!" f"URL {url.result_url}",
-                    exc_info=True,
+                    # f"Failed download but can RETRY! {type(e)} URL {url.result_url}",
+                    f"Failed download but can RETRY! {type(e)}",
+                    # exc_info=True,
                 )
                 raise RetriableNetworkError(e)
             else:
                 # данную ошибку загрузки нельзя ретрайить
                 logger.exception(
-                    f"Final Fail! Can't RETRY. Exception while downloading "
+                    f"Final Fail! Can't RETRY. Exception while downloading {type(e)}"
                     f"URL {url.result_url}",
-                    exc_info=True,
+                    # exc_info=True,
                 )
                 raise NotRetriableNetworkError(e)
         else:
@@ -141,6 +143,22 @@ class AiohttpDlTransport(BaseWebLoader):
             logger.debug(f"Статус: {_inner_response.status}, " f"url: {url.result_url}")
 
         return _download_result
+
+    def _load_config(self, config: WebLoaderConfig) -> None:
+        self.config: WebLoaderConfig = config
+        self.urls = config.urls
+        self.http_method = config.http_method
+        self.concurrent_connections = config.concurrent_connections
+        self.headers = config.headers
+        self.fetch_page_timeout = config.fetch_page_timeout
+        self.check_ssl = config.check_ssl
+        self.proxy = config.proxy
+        self.callbacks_list_on_result = config.callbacks_list_on_result
+
+        # БЛОК ОТЛАДКИ
+        # генератор последовательности HTTP кодов ответов
+        # - для проверки ретраев
+        self.fake_http_code_gen: Callable | None = None
 
     async def _a_worker(self, url: URLRequest, session, semaphore):
 
@@ -237,7 +255,7 @@ class AiohttpDlTransport(BaseWebLoader):
         # не задано ни одного обработчика
         # - вернём исходные результаты
         if not callbacks:
-            print("Выход. Не задано ни одного обработчика результатов скачивания...")
+            # print("Выход. Не задано ни одного обработчика результатов скачивания...")
             return self.url_results_list
 
         for callback in callbacks:

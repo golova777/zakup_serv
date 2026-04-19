@@ -1,10 +1,13 @@
 import os
 from dotenv import load_dotenv
-from enum import Enum
 
 load_dotenv()
 
+# HTTP статус-коды, при которых имеет смысл повторить запрос
 RETRIABLE_HTTP_STATUS_CODES = [429, 500, 502, 503, 504]
+
+# рандомная задержка (нормальное распределение по mu и std)
+JITTER = {"mu": 0.03, "std": 0.1}
 
 
 DEFAULT_RETRY_POLICY = {
@@ -28,7 +31,7 @@ DEFAULT_RETRY_POLICY = {
 # }
 
 
-DEFAULTS = {
+NET_DEFAULTS = {
     "PROXY": os.getenv("TEXT_PROXY", None),
     "CONCURRENT_CONNECTIONS": 10,
     "FETCH_PAGE_TIMEOUT": 30,
@@ -38,6 +41,7 @@ DEFAULTS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
     },
+    "JITTER": {"mu": 0.1, "std": 0.3},
 }
 
 SAVERS_DEFAULTS = {

@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Any
+
 import aiofiles
 
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import URLResult
@@ -6,7 +8,7 @@ from zakup_serv.infrastructure.result_processors.base import DataProcessorInterf
 from zakup_serv.settings import SAVERS_DEFAULTS
 
 
-class SaveOnDisk(DataProcessorInterface):
+class SavePageOnDisk(DataProcessorInterface):
     # Сохранит строковые данные на диск
     def __init__(
         self,
@@ -34,6 +36,36 @@ class SaveOnDisk(DataProcessorInterface):
             await f.write(result_obj.request_result)
             print(f"Сохранено: {full_path}")
         return result_obj
+
+    def process_it(
+        self,
+        result_obj: URLResult,
+    ) -> URLResult:
+        raise NotImplementedError
+
+
+class SaveAnyOnDisk:
+    # Сохранит строковые данные на диск
+    def __init__(
+        self,
+        folder: str = SAVERS_DEFAULTS["SAVE_FOLDER"] + "_custom_data",
+    ):
+        self.folder = Path(folder)
+
+    async def a_process_it(
+        self,
+        data: Any,
+        filename: str,
+    ) -> int:
+        data = str(data)
+        full_path = self.folder
+
+        full_path.mkdir(parents=True, exist_ok=True)
+        full_path = full_path / filename
+        async with aiofiles.open(full_path, "w", encoding="utf-8") as f:
+            await f.write(data)
+            print(f"Сохранено: {full_path}")
+        return len(data)
 
     def process_it(
         self,

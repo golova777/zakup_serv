@@ -25,4 +25,4 @@ class MaxPrice:
         )
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(max_price={self.min_price}, query_param_name={self.query_param.param_name})"
+        return f"{self.__class__.__name__}(max_price={self.max_price}, query_param_name={self.query_param.param_name})"

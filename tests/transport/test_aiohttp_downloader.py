@@ -12,7 +12,8 @@ from zakup_serv.transport.base import WebLoaderConfig
 import zakup_serv.settings as core_settings
 from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
 
-TEST_OK_PAGE_URL = "https://example.com"
+# TEST_OK_PAGE_URL = "https://example.com"
+TEST_OK_PAGE_URL = "https://zakupki.gov.ru/epz/contract/search/results.html?morphology=on&fz44=on&contractStageList_0=on&contractStageList_1=on&contractStageList_2=on&contractStageList_3=on&contractStageList=0%2C1%2C2%2C3&selectedContractDataChanges=ANY&contractPriceFrom=0&contractPriceTo=1000000000000&budgetLevelsIdNameHidden=%7B%7D&customerPlace=44000000000&customerPlaceCodes=44000000000&contractDateFrom=01.01.2026&contractDateTo=01.05.2026&countryRegIdNameHidden=%7B%7D&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_50&showLotsInfoHidden=false"
 TEST_FAIL_PAGE_URL = "https://example.com/fail"
 
 
@@ -24,7 +25,7 @@ async def test_just_can_download_page_with_test_proxy():
         [
             url,
         ],
-        proxy=core_settings.DEFAULTS.get("PROXY", None),
+        proxy=core_settings.NET_DEFAULTS.get("PROXY", None),
     )
 
     page_loader = AiohttpDlTransport(web_loader_config)

@@ -18,24 +18,25 @@ class QueryParams(Enum):
 MARKETPLACE_INFO = {
     "44FZ": {
         "base_url": "https://zakupki.gov.ru/epz/contract/search/results.html?morphology=on&"
-                    "fz44=on&contractStageList_0=on&contractStageList_1=on&contractStageList_2=on&"
-                    "contractStageList_3=on&contractStageList=0%2C1%2C2%2C3&selectedContractDataChanges=ANY&"
-                    "contractPriceFrom=0&contractPriceTo=100000000000&budgetLevelsIdNameHidden=%7B%7D&"
-                    "customerPlace=44000000000&customerPlaceCodes=44000000000&"
-                    "contractDateFrom=01.01.2025&contractDateTo=31.03.2025&countryRegIdNameHidden=%7B%7D&"
-                    "sortBy=UPDATE_DATE&"
-                    "pageNumber=1&sortDirection=false&recordsPerPage=_10&"
-                    "showLotsInfoHidden=false",
+        "fz44=on&contractStageList_0=on&contractStageList_1=on&contractStageList_2=on&"
+        "contractStageList_3=on&contractStageList=0%2C1%2C2%2C3&selectedContractDataChanges=ANY&"
+        "contractPriceFrom=0&contractPriceTo=100000000000&budgetLevelsIdNameHidden=%7B%7D&"
+        "customerPlace=44000000000&customerPlaceCodes=44000000000&"
+        "contractDateFrom=01.01.2025&contractDateTo=31.03.2025&countryRegIdNameHidden=%7B%7D&"
+        "sortBy=UPDATE_DATE&"
+        "pageNumber=1&sortDirection=false&recordsPerPage=_10&"
+        "showLotsInfoHidden=false",
         "regions": {
-            "Костромская область": "44000000000",
+            # "Костромская область": "44000000000",
             # "Ivanovo region": "37000000000",
         },
         "fallback_dates": {
             "from": "01.01.2026",
             "to": "30.02.2026",
         },
-        "price": (0, 1000000000000),
-        "default_per_page_items": 50,
+        "price": (1, 100000000000),
+        "max_span_contracts": 5000,
+        "default_per_page_items": 10,
         "default_proxy": None,
         "query_params": QueryParams,
     },
