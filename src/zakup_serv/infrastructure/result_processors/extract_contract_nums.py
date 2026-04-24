@@ -4,10 +4,38 @@ from bs4 import BeautifulSoup
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import URLResult
 from zakup_serv.infrastructure.CustomExceptions import NoNewContractsException
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
+from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
+
 
 
 class ContractNumsExtractor(DataProcessorInterface):
     # для тестовых целей - проверка процессинга результатов запросов
+
+    @staticmethod
+    @net_stat_info()
+    def get_contracts(result_obj: URLResult) -> list:
+
+        inner_result_obj = result_obj
+
+        soup = BeautifulSoup(inner_result_obj.request_result, "lxml")
+
+        contracts_blocs = soup.find_all(
+            "div", class_="registry-entry__header-mid__number"
+        )
+        contract_links = [
+            contract.find("a").get("href").strip() for contract in contracts_blocs
+        ]
+        contract_nums = [
+            re.search(r"reestrNumber=(\d+)", link).group(1) for link in contract_links
+        ]
+
+        # print(len(contracts_blocs))
+
+        if not contract_nums or len(contract_nums) == 0:
+            return []
+
+        return contract_nums
+
 
     async def a_process_it(self, result_obj: URLResult) -> URLResult:
         inner_result_obj = result_obj

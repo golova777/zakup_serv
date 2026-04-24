@@ -46,19 +46,25 @@ class SavePageOnDisk(DataProcessorInterface):
 
 class SaveAnyOnDisk:
     # Сохранит строковые данные на диск
-    def __init__(
-        self,
-        folder: str = SAVERS_DEFAULTS["SAVE_FOLDER"] + "_custom_data",
-    ):
-        self.folder = Path(folder)
+    def __init__(self):
+        # self.folder: str = SAVERS_DEFAULTS["SAVE_FOLDER"]
+        pass
 
+    @staticmethod
     async def a_process_it(
-        self,
         data: Any,
         filename: str,
+        folders: list[str] | None = None,
     ) -> int:
         data = str(data)
-        full_path = self.folder
+
+        if folders and len(folders) > 0:
+            full_path = Path(SAVERS_DEFAULTS["SAVE_FOLDER"])
+            for folder in folders:
+                full_path = full_path / Path(folder)
+
+        else:
+            full_path = Path(SAVERS_DEFAULTS["SAVE_FOLDER"])
 
         full_path.mkdir(parents=True, exist_ok=True)
         full_path = full_path / filename

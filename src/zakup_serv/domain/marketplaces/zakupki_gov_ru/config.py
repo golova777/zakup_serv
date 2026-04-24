@@ -21,7 +21,7 @@ MARKETPLACE_INFO = {
         "fz44=on&contractStageList_0=on&contractStageList_1=on&contractStageList_2=on&"
         "contractStageList_3=on&contractStageList=0%2C1%2C2%2C3&selectedContractDataChanges=ANY&"
         "contractPriceFrom=0&contractPriceTo=100000000000&budgetLevelsIdNameHidden=%7B%7D&"
-        "customerPlace=44000000000&customerPlaceCodes=44000000000&"
+        "customerPlace=44000000000&"
         "contractDateFrom=01.01.2025&contractDateTo=31.03.2025&countryRegIdNameHidden=%7B%7D&"
         "sortBy=UPDATE_DATE&"
         "pageNumber=1&sortDirection=false&recordsPerPage=_10&"
@@ -37,8 +37,12 @@ MARKETPLACE_INFO = {
         "price": (1, 100000000000),
         "max_span_contracts": 5000,
         "default_per_page_items": 10,
+        "default_page_num": 1,
         "default_proxy": None,
         "query_params": QueryParams,
+        "dwl_stages": {
+            "price_spans": "1_price_spans"
+        }
     },
     "223FZ": {},
 }

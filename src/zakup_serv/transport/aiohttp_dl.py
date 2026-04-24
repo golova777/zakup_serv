@@ -246,6 +246,7 @@ class AiohttpDlTransport(BaseWebLoader):
                 )
                 return TimeoutError
 
+    @net_stat_info()
     async def a_process_results(self) -> list[URLResult]:
         # Обработчики применяются последовательно к набору результатов
         # каждый обработчик принимает на вход ИСХОДНЫЙ набор результатов URLResult

@@ -1,7 +1,9 @@
+import random
 import asyncio
 import functools
-import random
+import inspect
 import time
+
 
 
 # Задаёт выполнение функции с задержкой, которая задаётся по
@@ -23,40 +25,114 @@ def add_jitter_delay(nu: float, sigma: float):
     return decorator
 
 
-# статистика вызова функции
-def net_stat_info():
+# статистика вызова функции - только для асинхронных функций
+def a_net_stat_info():
     def decorator(my_func):
         @functools.wraps(my_func)
         async def wrapper(*args, **kwargs):
-            if not hasattr(wrapper, "calls_history"):
-                wrapper.calls_history = {
-                    "total_calls": 0,
-                    "avg_exec_time": 0.0,
-                    "total_time": 0.0,
-                    "longest_exec_time": 0,
-                    "shortest_exec_time": 0,
+            if not hasattr(a_net_stat_info, "calls_history"):
+                a_net_stat_info.calls_history = {
+                    wrapper.__name__: {
+                        "total_calls": 0,
+                        "exec_time_avg": 0.0,
+                        "exec_time_longest": 0.0,
+                        "exec_time_shortest": 0.0,
+                        "exec_time_total": 0.0,
+                    }
                 }
 
-            start_time = time.time()
+            if not a_net_stat_info.calls_history.get(wrapper.__name__):
+                a_net_stat_info.calls_history[wrapper.__name__] = {
+                    "total_calls": 0,
+                    "exec_time_avg": 0.0,
+                    "exec_time_longest": 0.0,
+                    "exec_time_shortest": 0.0,
+                    "exec_time_total": 0.0,
+                }
+
+            start_time = time.perf_counter()
             try:
-                res = await my_func(*args, **kwargs)
-                return res
+                return await my_func(*args, **kwargs)
+
             finally:
-                elapsed = time.time() - start_time
-                wrapper.calls_history["total_calls"] += 1
-                wrapper.calls_history["total_time"] += round(elapsed, 3)
-                wrapper.calls_history["avg_exec_time"] = (
-                        wrapper.calls_history["total_time"]
-                        / wrapper.calls_history["total_calls"]
+                elapsed = time.perf_counter() - start_time
+                info = a_net_stat_info.calls_history[wrapper.__name__]
+
+                info["total_calls"] += 1
+                info["exec_time_total"] += round(elapsed, 3)
+                info["exec_time_avg"] = (
+                        info["exec_time_total"]
+                        / info["total_calls"]
                 )
 
-                if elapsed > wrapper.calls_history["longest_exec_time"]:
-                    wrapper.calls_history["longest_exec_time"] = elapsed
-                if wrapper.calls_history["shortest_exec_time"] == 0:
-                    wrapper.calls_history["shortest_exec_time"] = elapsed
-                if elapsed < wrapper.calls_history["shortest_exec_time"]:
-                    wrapper.calls_history["shortest_exec_time"] = elapsed
+                if elapsed > info["exec_time_longest"]:
+                    info["exec_time_longest"] = elapsed
+                if info["exec_time_shortest"] == 0:
+                    info["exec_time_shortest"] = elapsed
+                if elapsed < info["exec_time_shortest"]:
+                    info["exec_time_shortest"] = elapsed
 
         return wrapper
+
+    return decorator
+
+
+# статистика вызова функции - универсальный (синхронный и асинхронный)
+def net_stat_info():
+    """
+    Универсальный декоратор статистики:
+    - работает для async и sync функций
+    - хранит статистику в net_stat_info.calls_history
+    """
+
+    def decorator(my_func):
+        func_name = my_func.__name__
+
+        def _ensure_slot():
+            if not hasattr(net_stat_info, "calls_history"):
+                net_stat_info.calls_history = {}
+            if func_name not in net_stat_info.calls_history:
+                net_stat_info.calls_history[func_name] = {
+                    "total_calls": 0,
+                    "exec_time_avg": 0.0,
+                    "exec_time_longest": 0.0,
+                    "exec_time_shortest": 0.0,
+                    "exec_time_total": 0.0,
+                }
+
+        def _update_stats(elapsed: float):
+            info = net_stat_info.calls_history[func_name]
+            info["total_calls"] += 1
+            info["exec_time_total"] += elapsed
+            info["exec_time_avg"] = info["exec_time_total"] / info["total_calls"]
+
+            if elapsed > info["exec_time_longest"]:
+                info["exec_time_longest"] = elapsed
+
+            if info["exec_time_shortest"] == 0.0 or elapsed < info["exec_time_shortest"]:
+                info["exec_time_shortest"] = elapsed
+
+        if inspect.iscoroutinefunction(my_func):
+            @functools.wraps(my_func)
+            async def async_wrapper(*args, **kwargs):
+                _ensure_slot()
+                start = time.perf_counter()
+                try:
+                    return await my_func(*args, **kwargs)
+                finally:
+                    _update_stats(time.perf_counter() - start)
+
+            return async_wrapper
+
+        @functools.wraps(my_func)
+        def sync_wrapper(*args, **kwargs):
+            _ensure_slot()
+            start = time.perf_counter()
+            try:
+                return my_func(*args, **kwargs)
+            finally:
+                _update_stats(time.perf_counter() - start)
+
+        return sync_wrapper
 
     return decorator
