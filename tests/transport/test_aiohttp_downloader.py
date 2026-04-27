@@ -5,8 +5,8 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
     URLResult,
 )
 from zakup_serv.infrastructure.CustomExceptions import (
-    NotRetriableNetworkError,
-    ExceededRetryAttemptsError,
+    NotRetriableNetworkException,
+    ExceededRetryAttemptsException,
 )
 from zakup_serv.transport.base import WebLoaderConfig
 import zakup_serv.settings as core_settings
@@ -91,7 +91,7 @@ async def test_must_brake_on_real_404():
     assert (
         request_result is None
     ), "Результат должен быть None, т.к. запрос завершён с ошибкой"
-    assert isinstance(request_error, NotRetriableNetworkError), (
+    assert isinstance(request_error, NotRetriableNetworkException), (
         f"Ожидается NotRetriableNetworkError, " f"но получено {type(request_error)}"
     )
     assert attempts == 1, (
@@ -129,7 +129,7 @@ async def test_must_brake_on_fake_404():
     assert (
         request_result is None
     ), "Результат должен быть None, т.к. запрос завершён с ошибкой"
-    assert isinstance(request_error, NotRetriableNetworkError), (
+    assert isinstance(request_error, NotRetriableNetworkException), (
         f"Ожидается NotRetriableNetworkError, " f"но получено {type(request_error)}"
     )
     assert attempts == 1, (
@@ -168,7 +168,7 @@ async def test_must_brake_on_fake_503_with_several_attempts():
     assert (
         request_result is None
     ), "Результат должен быть None, т.к. запрос завершён с ошибкой"
-    assert isinstance(request_error, ExceededRetryAttemptsError), (
+    assert isinstance(request_error, ExceededRetryAttemptsException), (
         f"Ожидается ExceededRetryAttemptsError, " f"но получено {type(request_error)}"
     )
     assert attempts == max_attempts, (

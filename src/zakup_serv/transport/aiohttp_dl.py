@@ -11,10 +11,10 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
     URLResult,
 )
 from zakup_serv.infrastructure.CustomExceptions import (
-    NoDataLoaded,
-    RetriableNetworkError,
-    NotRetriableNetworkError,
-    ExceededRetryAttemptsError,
+    NoDataLoadedException,
+    RetriableNetworkException,
+    NotRetriableNetworkException,
+    ExceededRetryAttemptsException,
 )
 from zakup_serv.infrastructure.result_processors.decorators import (
     add_jitter_delay,
@@ -114,7 +114,7 @@ class AiohttpDlTransport(BaseWebLoader):
                 f"Failed download but can RETRY! {type(e)}",
                 # exc_info=True,
             )
-            raise RetriableNetworkError(e)
+            raise RetriableNetworkException(e)
 
         except Exception as e:
             # Возникла ошибка во время загрузки страницы
@@ -125,7 +125,7 @@ class AiohttpDlTransport(BaseWebLoader):
                     f"Failed download but can RETRY! {type(e)}",
                     # exc_info=True,
                 )
-                raise RetriableNetworkError(e)
+                raise RetriableNetworkException(e)
             else:
                 # данную ошибку загрузки нельзя ретрайить
                 logger.exception(
@@ -133,10 +133,10 @@ class AiohttpDlTransport(BaseWebLoader):
                     f"URL {url.result_url}",
                     # exc_info=True,
                 )
-                raise NotRetriableNetworkError(e)
+                raise NotRetriableNetworkException(e)
         else:
             # страница загружена нормально
-            logger.info(
+            logger.debug(
                 f"Статус: {_inner_response.status}, "
                 f"len: {len(_download_result) if _download_result else 0}"
             )
@@ -180,7 +180,7 @@ class AiohttpDlTransport(BaseWebLoader):
                             session, url, forced_http_status=fake_http_code
                         )
 
-                    except RetriableNetworkError as e:
+                    except RetriableNetworkException as e:
                         logger.warning(
                             f"Failed #{attempt} attempt to download data. "
                             f"Exception {type(e)}, "
@@ -213,24 +213,24 @@ class AiohttpDlTransport(BaseWebLoader):
                             return response_data
                         else:
                             logger.error(f"No data loaded for URL {url.result_url}")
-                            raise NoDataLoaded("ошибка загрузки данных")
+                            raise NoDataLoadedException("ошибка загрузки данных")
 
                 # Все попытки исчерпаны. Следовательно, ExceededRetryAttemptsError
-                raise ExceededRetryAttemptsError(
+                raise ExceededRetryAttemptsException(
                     f"Can't download URL "
                     f"in {DEFAULT_RETRY_POLICY['retries']} "
                     f"attempts. URL: {url.result_url}"
                 )
 
-            except (ExceededRetryAttemptsError, NotRetriableNetworkError) as e:
+            except (ExceededRetryAttemptsException, NotRetriableNetworkException) as e:
                 # ошибки исчерпания лимита попыток и необрабатываемые сбои скачивания
-                if isinstance(e, NotRetriableNetworkError):
+                if isinstance(e, NotRetriableNetworkException):
                     logger.exception(
                         f"Not retriable error occurred, "
                         f"while retry attempts executed",
                         exc_info=True,
                     )
-                if isinstance(e, ExceededRetryAttemptsError):
+                if isinstance(e, ExceededRetryAttemptsException):
                     logger.exception(
                         f"Exceeded retry attempts value, "
                         f"while retry attempts executed",
@@ -372,14 +372,14 @@ class AiohttpDlTransport(BaseWebLoader):
                     if isinstance(res_data, Exception):
                         error_count += 1
                         url_result.downloading_raised_exceptions = res_data
-                        logger.warning(
+                        logger.error(
                             f"Caught exception [{type(res_data)}] while downloading URL {url.result_url}"
                         )
 
                     results_list.append(url_result)
 
                 # логируем статистику выполнения
-                logger.info(
+                logger.debug(
                     f"Downloaded URLs {len(results_list)}. With Errors: {error_count}"
                 )
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import ast
+import re
 from concurrent.futures import ProcessPoolExecutor
 from os.path import isdir
 from pathlib import Path
@@ -12,7 +13,11 @@ import aiofiles
 from bs4 import BeautifulSoup
 from copy import deepcopy
 
+from prompt_toolkit.output import create_output
+
+from zakup_serv.domain.marketplaces.zakupki_gov_ru import contracts
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.base import QueryParam
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.dates import (
     StartDate,
     EndDate,
@@ -25,6 +30,7 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.pr
     MinPrice,
     MaxPrice,
 )
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.reestr_number import ReestrNumber
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.regions import (
     ContractRegions,
 )
@@ -32,6 +38,7 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
     URLRequest,
     URLResult,
 )
+from zakup_serv.infrastructure.CustomExceptions import FailedContractFetchException
 from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
 
 from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor
@@ -90,11 +97,39 @@ class FZ44_ContractsLists:
         )
 
 
-    def prepare_single_web_loader_config(self, target: dict) -> WebLoaderConfig:
+    def _set_contracts_single_web_loader_config(self, target: dict, link: str) -> WebLoaderConfig:
+        # target_contract = {
+        #     "region_id": region_dir.name,
+        #     "number": contract_num,
+        #     "file_name": curr_file.name,
+        #     "file": curr_file,
+        #     "processed_file_name": f"{processed_suffix}{curr_file.name}",
+        #     "processed_file": curr_file.with_name(f"{processed_suffix}{curr_file.name}"),
+        #     "date_from": self.from_date,
+        #     "date_to": self.to_date,
+        #     "save_dirs": [],
+        # }
+
+        url = URLRequest(link)
+
+        url.set_query_params(
+            ReestrNumber(target['number']),
+        )
+
+        web_config = WebLoaderConfig(
+            [
+                url,
+            ],
+        )
+
+        return web_config
+
+
+    def _set_contract_pages_single_web_loader_config(self, target: dict) -> WebLoaderConfig:
         url = URLRequest(self.marketplace_config["base_url"])
 
         region = ContractRegions(
-            {target["region_name"]: target["region_id"]}
+            {target["region_id"]: target["region_name"]}
         ).regions[0]
 
         url.set_query_params(
@@ -120,7 +155,7 @@ class FZ44_ContractsLists:
 
         return web_config
 
-    @net_stat_info()
+
     def prepare_web_loader_configs(self) -> list[WebLoaderConfig]:
 
         regions = ContractRegions(self.regions).regions
@@ -177,8 +212,12 @@ class FZ44_ContractsLists:
             # количества контрактов для каждого диапазона цен
             tasks = [
                 asyncio.create_task(
-                    self.a_fetch_page(
-                        deepcopy(config), price_from=span[0], price_to=span[1]
+                    self._a_fetch_page(
+                        deepcopy(config),
+                        [
+                            MinPrice(span[0]),
+                            MaxPrice(span[1])
+                        ],
                     )
                 )
                 for span in init_prices_spans
@@ -191,9 +230,13 @@ class FZ44_ContractsLists:
                 f"{config.urls[0].region_name}[id={config.urls[0].region_id}]"
             )
 
+            # TODO а стоит ли их прсто отсевать если пришло исключение????
+            #  там ведь дланные могут быть всё равно
             # 2. отсеять интервалы цены для которых вместо страницы пришло исключение
             temp_price_spans = []
             temp_price_spans_pages = []
+            temp_price_spans_data = []
+            temp_price_spans_and_num_contracts = {}
             for span, span_page in zip(init_prices_spans, span_results_pages):
                 if isinstance(span_page.request_result, Exception):
                     logger.warning(
@@ -209,24 +252,26 @@ class FZ44_ContractsLists:
                 temp_price_spans_pages.append(
                     span_page.request_result
                 )  # сохраняем только контент страниц
-
-            pass
+                temp_price_spans_data.append(
+                    span_page
+                )
 
             # 3. получим количество контрактов для каждого диапазона цен,
             # для которых успешно получили страницу
             with ProcessPoolExecutor() as pool:
                 contracts_counts = list(
-                    pool.map(self.get_total_contracts, temp_price_spans_pages)
+                    pool.map(self._get_total_contracts, temp_price_spans_pages)
                 )
 
             # 4. обработка диапазонов цен в зависимости от количества контрактов в них
-            for span, total_contracts in zip(temp_price_spans, contracts_counts):
+            for span, total_contracts, url_result in zip(temp_price_spans, contracts_counts, temp_price_spans_data):
 
                 region_name = config.urls[0].region_name
                 region_id = config.urls[0].region_id
                 print(
                     f"For {region_name} (code={region_id}) "
-                    f"span ({str(span)}) got {total_contracts} contracts"
+                    f"span ({str(span)}) got {total_contracts} contracts "
+                    # f"URL: {url_result.url_request.result_url if url_result.url_request else 'N/A'}"
                 )
 
                 if total_contracts == 0:
@@ -238,6 +283,7 @@ class FZ44_ContractsLists:
                     # Этот диапазон цен дробить не надо - переносим его в result_prices_spans
                     result_prices_spans.append(span)  # добавим в результат
                     init_prices_spans.remove(span)  # удалим из начального списка
+                    temp_price_spans_and_num_contracts[total_contracts] = span
                 else:
                     # Этот диапазон цен надо дробить -
                     # разделим его пополам и добавим обе половины обратно в init_prices_spans
@@ -259,7 +305,9 @@ class FZ44_ContractsLists:
         date_from = config.urls[0].date_from
         date_to = config.urls[0].date_to
         filename = f"{region_id}_{region_name}.txt"
-        await self.a_save_data_to_file(
+        await self._a_save_data_to_file(
+            # TODO вместо result_prices_spans нужно сделать вызов как на следующей строке
+            # self._normalize_price_spans(temp_price_spans_and_num_contracts),
             result_prices_spans,
             filename,
             folders=[
@@ -271,11 +319,18 @@ class FZ44_ContractsLists:
         return result_prices_spans
 
     @staticmethod
+    def _normalize_price_spans(price_spans: list[list]) -> list[list]:
+        # TODO сделать нормализацию списка промежутков цен.
+
+        return price_spans
+
+
+    @staticmethod
     @net_stat_info()
-    async def a_save_data_to_file(
+    async def _a_save_data_to_file(
             data: Any,
             filename: str,
-            folders: list[str] | None = None
+            folders: list[str | Path] | Path | None = None,
     ) -> int:
         written = await SaveAnyOnDisk().a_process_it(str(data), filename, folders)
         logger.info(
@@ -283,54 +338,66 @@ class FZ44_ContractsLists:
         )
         return written
 
+    @staticmethod
+    def _walk_dir_tree(
+            root: str | Path,
+            include_dirs: bool = False,
+            include_files: bool = True,
+            filter_dirs: list[str] | None = None,
+    ) -> Iterator[Path]:
+        """
+        Обходит дерево директорий от `root` вниз.
+
+        :param root: корневая папка
+        :param include_dirs: если True, возвращает и папки тоже
+        :return: итератор Path-объектов
+        """
+        root = Path(root)
+
+        for dirpath, dirnames, filenames in os.walk(root):
+            current_dir = Path(dirpath)
+
+            if include_dirs:
+                for d in dirnames:
+                    if filter_dirs:
+                        if d in filter_dirs:
+                            yield current_dir / d
+                    else:
+                        yield current_dir / d
+            if include_files:
+                for f in filenames:
+                    yield current_dir / f
+
+
+    @staticmethod
+    async def _read_one_file(path: Path) -> str:
+        ''' вернёт содержимое файла асинхронно'''
+        async with aiofiles.open(path, mode="r", encoding="utf-8") as f:
+            return await f.read()
+
 
     async def _a_get_target_span_files_data(
             self,
             target_dir: Path
     ) -> list[dict]:
-
-        async def _read_one_file(path: Path) -> str:
-            async with aiofiles.open(path, mode="r", encoding="utf-8") as f:
-                return await f.read()
-
-        def walk_tree(root: str | Path, include_dirs: bool = False) -> Iterator[Path]:
-            """
-            Обходит дерево директорий от `root` вниз.
-
-            :param root: корневая папка
-            :param include_dirs: если True, возвращает и папки тоже
-            :return: итератор Path-объектов
-            """
-            root = Path(root)
-
-            for dirpath, dirnames, filenames in os.walk(root):
-                current_dir = Path(dirpath)
-
-                if include_dirs:
-                    for d in dirnames:
-                        yield current_dir / d
-
-                for f in filenames:
-                    yield current_dir / f
-
         # прочитать директории с ценовыми промежутками
         # для регионов для текущих дат from_date и to_date
         found_target_dir = None
         found_target_files = []
         targets = []
 
-        for p in walk_tree(target_dir, include_dirs=True):
+        for p in self._walk_dir_tree(target_dir, include_dirs=True):
             if p.is_dir() and p.name == f"{self.from_date}_{self.to_date}":
                 found_target_dir = p
 
-                for file_obj in walk_tree(found_target_dir):
+                for file_obj in self._walk_dir_tree(found_target_dir):
                     found_target_files.append(file_obj)
 
         if len(found_target_files) == 0:
             #  файлов для обработки не нашлось - останов
             raise RuntimeError("Nothing to do (no files)... Exiting...")
 
-        tasks = [asyncio.create_task(_read_one_file(path)) for path in found_target_files]
+        tasks = [asyncio.create_task(self._read_one_file(path)) for path in found_target_files]
 
         results = await asyncio.gather(*tasks)
 
@@ -370,21 +437,26 @@ class FZ44_ContractsLists:
         date_to = web_config.urls[0].date_to
 
         max_pages = int(
-            self.marketplace_config["max_span_contracts"] / per_page_items
+            self.marketplace_config["db_limit_max_span_contracts"] / per_page_items
         )
         contract_numbers = []
 
         for page_number in range(start_page, max_pages+1):
+
+            url_result = await self._a_fetch_page(
+                deepcopy(web_config),
+                [
+                    Page(page_number),
+                    MinPrice(price_from),
+                    MaxPrice(price_to),
+                ],
+            )
             logger.info(f"Start page number: {page_number} "
                         f"for region {web_config.urls[0].region_id} "
-                        f"for price span {price_from} to {price_to}")
+                        f"for price span {price_from} to {price_to} "
+                        # f"URL: {url_result.url_request.result_url}"
+                        )
 
-            url_result = await self.a_fetch_page(
-                deepcopy(web_config),
-                page=page_number,
-                price_from=price_from,
-                price_to=price_to
-            )
             contracts_list = await asyncio.to_thread(ContractNumsExtractor.get_contracts, url_result)
 
             if len(contracts_list) == 0:
@@ -464,10 +536,11 @@ class FZ44_ContractsLists:
             return total_contracts_list
 
 
-    async def a_get_all_contract_lists_pages(
+    async def a_get_contracts_pages(
             self,
-            per_page_items: int = MARKETPLACE_INFO["44FZ"]['default_per_page_items']
+            per_page_items: int | None = None,
     ):
+        per_page_items = per_page_items or MARKETPLACE_INFO["44FZ"]['default_per_page_items']
 
         target_dir = (
                 Path(SAVERS_DEFAULTS["SAVE_FOLDER"]) /
@@ -481,12 +554,12 @@ class FZ44_ContractsLists:
 
             target['per_page_items'] = per_page_items
             target['save_dirs'] = [
-                '2_conatract_lists_pages',
+                self.marketplace_config['dwl_stages']['contracts_pages'],
                 f'{target["date_from"]}_{target["date_to"]}',
                 f'{target["region_id"]}'
             ]
 
-            web_loader_config = self.prepare_single_web_loader_config(target)
+            web_loader_config = self._set_contract_pages_single_web_loader_config(target)
             # pprint(web_loader_config)
             res = await self._get_exact_contracts_pages_on_span(target, web_loader_config)
 
@@ -494,9 +567,12 @@ class FZ44_ContractsLists:
 
 
 
-    async def a_get_all_region_price_spans(self):
+    async def a_get_price_spans(
+            self,
+            concurrent: int | None = None
+    ):
         # Ограничение конкурентности ################################
-        concur_connects = NET_DEFAULTS["CONCURRENT_CONNECTIONS"]
+        concur_connects = concurrent or NET_DEFAULTS["CONCURRENT_CONNECTIONS"]
         semaphore = asyncio.Semaphore(concur_connects)
 
         async def semaphore_get_region_price_spans(config):
@@ -532,8 +608,8 @@ class FZ44_ContractsLists:
         except Exception as e:
             logger.exception(e)
 
-
-    def get_total_contracts(self, raw_data) -> int:
+    @staticmethod
+    def _get_total_contracts(raw_data) -> int:
 
         def clear_int(data: str) -> int:
             # print(data)
@@ -557,99 +633,392 @@ class FZ44_ContractsLists:
         else:
             return result
 
-    async def a_fetch_page(
-        self,
-        config: WebLoaderConfig,
-        page: int | None = None,
-        price_from: int | None = None,
-        price_to: int | None = None,
+    @net_stat_info()
+    async def _a_fetch_contract_data(self, target_contract: dict) -> dict:
+        # нужно несколько этапов получения данных контракта
+        # 1. основные страницы из реестра контрактов
+        # 2. с основных страниц контракта: ссылки на вложенные файлы, на закупку, реестр недобросовестных
+        # 3. со страницы закупки: вложенные файлы
+
+        ###################################################
+        # Фаза 1 основные страницы из реестра контрактов
+        links_phase_1 = {
+            "contract_common_info": "https://zakupki.gov.ru/epz/contract/contractCard/common-info.html?reestrNumber=_",
+            "contract_payments": "https://zakupki.gov.ru/epz/contract/contractCard/payment-info-and-target-of-order.html?reestrNumber=_",
+            "contract_execution": "https://zakupki.gov.ru/epz/contract/contractCard/process-info.html?reestrNumber=_",
+            "contract_attachments": "https://zakupki.gov.ru/epz/contract/contractCard/document-info.html?reestrNumber=_",
+            "contract_versions": "https://zakupki.gov.ru/epz/contract/contractCard/journal-version.html?reestrNumber=_",
+            "contract_logs": "https://zakupki.gov.ru/epz/contract/contractCard/event-journal.html?reestrNumber=_",
+        }
+
+        # query параметр номера контракта в реестре
+        reestr_num_param = ReestrNumber(target_contract['number'])
+
+        configs_phase_1 = []
+        tasks_phase_1 = []
+        coro_phase_1 = []
+
+        for section, link in links_phase_1.items():
+            config = self._set_contracts_single_web_loader_config(target_contract, link)
+            configs_phase_1.append(config)
+            task = asyncio.create_task(self._a_fetch_page(config, [reestr_num_param]))
+            tasks_phase_1.append(task)
+
+            coro = self._a_fetch_page(config, [reestr_num_param])
+            coro_phase_1.append(coro)
+
+            ########################
+            res = await coro
+
+            print(len(res.request_result))
+            ########################
+
+            await self._a_save_data_to_file(
+                res.request_result,
+                f"{target_contract['number']}_{section}.txt",
+                target_contract['save_dirs'])
+
+
+
+
+
+        # results = asyncio.gather(*tasks_phase_1, return_exceptions=True)
+
+        # for result, config, section in zip(results, configs_phase_1, links_phase_1.keys()):
+        #     if isinstance(result, Exception):
+        #         result_exception = result
+        #         logger.error(f"Failed fetching contract num {target_contract['number']} "
+        #                      f"for region {target_contract['region_id']} "
+        #                      f"section {section} "
+        #                      f"with exception {type(result)} "
+        #                      f"{result}")
+        #
+        #         # Ошибка при загрузке секций контракта - отмена дальнейшей загрузки
+        #         raise FailedContractFetchException(
+        #             target_contract['number'],
+        #             type(result_exception),
+        #             f"section {section} and URL {config.urls[0].result_url} "
+        #         )
+        #
+        #     # TODO пеервести в debug в последствие
+        #     logger.info(f"Fetched section {section} (len={len(result)})"
+        #                  f"for contract num {target_contract['number']} "
+        #                  f"with URL {config.urls[0].result_url}")
+        #
+        # # первая фаза контракта скачана полностью
+        # logger.info(f"Successfully fetched contract num {target_contract['number']} "
+        #             f"for region {target_contract['region_id']} ")
+        #
+        # # сохраним файлы 1 фазы на диск
+        # for result, config, section in zip(results, configs_phase_1, links_phase_1.keys()):
+        #     await self._a_save_data_to_file(
+        #         result,
+        #         f"{target_contract['number']}_{section}.txt",
+        #         target_contract['save_dirs'])
+
+
+        return {
+            "file_name": target_contract['file_name'],
+        }
+
+
+
+
+    async def a_get_contracts_data(
+            self,
+            concurrent: int = 1,
+            force_reprocessed_files: bool = False
+    ):
+
+        def replace_counts_in_filename(filename: str, new_count: int | str) -> str:
+            """
+            Меняет число после `counts_` в имени файла.
+
+            Пример:
+            44000000000_date_01.01.2024_31.12.2024_price_1_95368_counts_4245.txt
+            -> ..._counts_1000.txt
+            """
+            pattern = r"(counts_)\d+"
+            return re.sub(pattern, rf"\g<1>{new_count}", filename)
+
+
+        concurrent = concurrent or self.marketplace_config['default_fetch_contracts_concurency']
+        processed_suffix = self.marketplace_config['contracts_file_processed_mark']
+
+        #####################################################################
+        # 1. Определить целевую папку, где лежат файлы с номерами контрактов
+        target_dir = (
+                Path(SAVERS_DEFAULTS["SAVE_FOLDER"]) /
+                Path(self.marketplace_config['dwl_stages']['contracts_pages']) /
+                Path(f"{self.from_date}_{self.to_date}")
+        )
+
+        #####################################################################
+        # 2. получим папки для каждого региона,
+        # для которого скачаны номера контрактов
+        region_dirs = self._walk_dir_tree(
+            target_dir,
+            include_dirs=True,
+            include_files=False,
+            filter_dirs=list(self.regions.keys()),
+        )
+
+        #####################################################################
+        # 3. для каждого региона получим список файлов с номерами контрактов
+        for region_dir in region_dirs:
+            contract_files = self._walk_dir_tree(
+                region_dir,
+                include_dirs=False,
+                include_files=True,
+            )
+
+            # Список контрактов которые не удалось скачать
+            region_fetch_failed_contracts = []
+
+            #####################################################################
+            # 4. для каждого файла с номерами контрактов
+            # получим эти номера и сохраним их в виде списка
+            for curr_file in contract_files:
+
+                # curr_file - этот файл
+                # при полной обработке контрактов надо обновить префиксом "processed_"
+                if not force_reprocessed_files:
+                    # пропускаем файлы контрактов с отметкой "processed_",
+                    # если нет режима принудительной обработки ранее обработанных файлов
+                    if processed_suffix in curr_file.name:
+                        logger.info(f"Skipping already processed {curr_file.name}")
+                        continue
+
+                # список номеров контрактов
+                contracts_nums = await self._read_one_file(curr_file)
+                contracts_nums = ast.literal_eval(contracts_nums)
+
+                total_span_contracts = len(contracts_nums)
+
+                #####################################################################
+                # 5. составим список contract_targets
+                # - словарей с данными для обработки каждого контракта
+                contract_targets = []
+                for contract_num in contracts_nums[:]:
+                    #  Итерируем по списку номеров контрактов
+                    #  - добавляя в писко целей
+                    target_contract = {
+                        "region_id": region_dir.name,
+                        "number": contract_num,
+                        "file_name": curr_file.name,
+                        "file": curr_file,
+                        "processed_file_name": f"{processed_suffix}{curr_file.name}",
+                        "processed_file": curr_file.with_name(f"{processed_suffix}{curr_file.name}"),
+                        "date_from": self.from_date,
+                        "date_to": self.to_date,
+                        "save_dirs": [
+                            self.marketplace_config['dwl_stages']['contracts_data'],
+                            f"{self.from_date}_{self.to_date}",
+                            f"{region_dir.name}",
+                            f"{contract_num}",
+                        ],
+                    }
+                    contract_targets.append(target_contract)
+
+                #####################################################ё################
+                # 6. конкурентно скачаем данные для каждого контракта из файла
+                semaphore = asyncio.Semaphore(concurrent)
+
+                async def semaphore_a_fetch_contract_data(target: dict):
+                    async with semaphore:
+                        return await self._a_fetch_contract_data(target)
+
+                fetch_contracts_tasks = [
+                    asyncio.create_task(semaphore_a_fetch_contract_data(target_contract))
+                    for target_contract
+                    in contract_targets
+                ]
+
+                fetch_contracts_results = await asyncio.gather(*fetch_contracts_tasks, return_exceptions=True)
+
+                error_count = 0
+                for result, target in zip(fetch_contracts_results, contract_targets):
+                    if isinstance(result, Exception):
+                        error_count += 1
+                        # добавим номер контракта (который не удалось скачать)
+                        # в список ошибок скачивания для региона
+                        region_fetch_failed_contracts.append(target['number'])
+                        # исключим из начального списка номер контракта, который не удалось скачать
+                        contracts_nums.remove(target['number'])
+                        logger.error(f"Failed fetching contract num {target['number']} "
+                                     f"for region {target['region_id']} "
+                                     f"with exception {type(result)} "
+                                     f"{result}")
+
+                    # для всех остальных, где нет ошибок при скачивании контрактов
+
+                if error_count > 0:
+                # были ошибки при скачивании контрактов для региона
+                # были исключения из contracts_nums
+                # - надо сохранить итоговый contracts_nums в соответствующий файл
+                    if len(contracts_nums) > 0:
+                        # в contracts_nums остались номера контрактов,
+                        # которые удалось скачать - сохраним их в файл
+
+                        new_file_name = replace_counts_in_filename(curr_file.name, len(contracts_nums))
+                        print(f"old file name: {curr_file.name}")
+                        print(f"new file name: {new_file_name}")
+                        await self._a_save_data_to_file(
+                            contracts_nums,
+                            new_file_name,
+                            region_dir,
+                        )
+
+
+
+            ###########
+            # если были ошибки скачивания контрактов для региона
+            # - region_fetch_failed_contracts
+            # - то запишем их в спец файл в директории региона
+            if len(region_fetch_failed_contracts) > 0:
+                error_file_name = f"failed_contracts_{region_dir.name}.txt"
+                await self._a_save_data_to_file(
+                    region_fetch_failed_contracts,
+                    error_file_name,
+                    region_dir,
+                )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # target_regions = await self._a_get_target_span_files_data(target_dir)
+        #
+        # for target in targets:
+        #     logger.info(f"Start getting contract pages for region {target['region_name']} "
+        #                 f"(id: {target['region_id']})")
+        #
+        #     target['per_page_items'] = per_page_items
+        #     target['save_dirs'] = [
+        #         self.marketplace_config['dwl_stages']['contracts_pages'],
+        #         f'{target["date_from"]}_{target["date_to"]}',
+        #         f'{target["region_id"]}'
+        #     ]
+        #
+        #     web_loader_config = self.prepare_single_web_loader_config(target)
+        #     # pprint(web_loader_config)
+        #     res = await self._get_exact_contracts_pages_on_span(target, web_loader_config)
+        #
+        #     pprint(res)
+        #
+        #
+        #
+        # # прочитать директории с ценовыми промежутками
+        # # для регионов для текущих дат from_date и to_date
+        # found_target_dir = None
+        # found_target_files = []
+        # targets = []
+        #
+        # for p in self._walk_dir_tree(target_dir, include_dirs=True):
+        #     if p.is_dir() and p.name == f"{self.from_date}_{self.to_date}":
+        #         found_target_dir = p
+        #
+        #         for file_obj in self._walk_dir_tree(found_target_dir):
+        #             found_target_files.append(file_obj)
+        #
+        # if len(found_target_files) == 0:
+        #     #  файлов для обработки не нашлось - останов
+        #     raise RuntimeError("Nothing to do (no files)... Exiting...")
+        #
+        # tasks = [asyncio.create_task(self._read_one_file(path)) for path in found_target_files]
+        #
+        # results = await asyncio.gather(*tasks)
+        #
+        # for result, file_obj in zip(results, found_target_files):
+        #     # print(f"Read data: {result}")
+        #     result = ast.literal_eval(result)
+        #     region_id = file_obj.name.split("_")[0]
+        #     region_name = file_obj.name.split("_")[1]
+        #
+        #     targets.append({
+        #         "region_id": region_id,
+        #         "region_name": region_name,
+        #         "file_name": file_obj.name,
+        #         "file": file_obj,
+        #         "data": list(result),
+        #         "length": len(result),
+        #         "date_from": self.from_date,
+        #         "date_to": self.to_date,
+        #         "per_page_items": self.per_page_items,
+        #     })
+        #
+        # return targets
+
+
+
+    # @staticmethod
+    # async def _a_fetch_page(
+    #     config: WebLoaderConfig,
+    #     page: int | None = None,
+    #     price_from: int | None = None,
+    #     price_to: int | None = None,
+    # ) -> URLResult:
+    #
+    #     page_loader = AiohttpDlTransport(config)
+    #     set_param = page_loader.urls[0].set_query_params
+    #
+    #     change_params = []  # список параметров ГКД которые надо поменять
+    #     if page:
+    #         change_params.append(Page(page))
+    #     if price_from:
+    #         change_params.append(MinPrice(price_from))
+    #     if price_to:
+    #         change_params.append(MaxPrice(price_to))
+    #
+    #     set_param(*change_params)  # установим новые параметры для запроса
+    #
+    #     download_results = await page_loader.a_run()
+    #
+    #     logger.info(
+    #         f"HTTP Status {download_results[0].url_request.status_code} for "
+    #         # f"params: {change_params} . URL {download_results[0].url_request.result_url}"
+    #         f"params: {change_params}"
+    #     )
+    #
+    #     return download_results[0]
+
+    @staticmethod
+    async def _a_fetch_page(
+            config: WebLoaderConfig,
+            params: list[QueryParam],
     ) -> URLResult:
+        first = 0
 
         page_loader = AiohttpDlTransport(config)
-        set_param = page_loader.urls[0].set_query_params
 
-        change_params = []  # список параметров ГКД которые надо поменять
-        if page:
-            change_params.append(Page(page))
-        if price_from:
-            change_params.append(MinPrice(price_from))
-        if price_to:
-            change_params.append(MaxPrice(price_to))
+        # ссылка на функцию установки параметров url
+        set_param = page_loader.urls[first].set_query_params
 
-        set_param(*change_params)  # установим новые параметры для запроса
+        # список параметров ГКД которые надо поменять
+        for param in params:
+            if not isinstance(param, QueryParam):
+                err_msg = f"param needs to be {type(QueryParam)}, not {type(param)}"
+                logger.error(err_msg)
+                raise TypeError(err_msg)
+
+        set_param(*params)  # установим новые параметры для запроса
 
         download_results = await page_loader.a_run()
 
-        logger.info(
-            f"HTTP Status {download_results[0].url_request.status_code} for "
-            # f"params: {change_params} . URL {download_results[0].url_request.result_url}"
-            f"params: {change_params}"
+        logger.debug(
+            f"HTTP Status {download_results[first].url_request.status_code} for "
+            f"params: {params} for URL: {page_loader.urls[first]}"
         )
 
-        return download_results[0]
+        return download_results[first]
 
-
-"""
- # =======скачивание контрактов (страницы пагинации)
-    # 1. подготовить данные для пула запросов (города, дата-интервал, иные параметры)
-
-    regions = ContractRegions(core_settings.contract_search_regions).regions
-    start_date = StartDate("01.01.2026")
-    end_date = EndDate("30.03.2026")
-    min_price = MinPrice(core_settings.search_min_max_price[0])
-    max_price = MaxPrice(core_settings.search_min_max_price[1])
-
-    # обработчики результатов запросов страниц
-    result_processors = [
-        # ResponseLength().a_process_it,
-        # ResponseLength().process_it,
-        # SaveOnDisk().a_process_it,
-        # ContractNumsExtractor().a_process_it,
-        ContractNumsExtractor().process_it,
-    ]
-
-    # 2. для каждого набора (город-даты) найти правильные интервалы пагинации
-
-    urls = []
-    for region in regions:
-        url = URLRequest(DEFAULT_TARGET_URLS["CONTRACTS_44_FZ"])
-
-        url.set_params(
-            region.query_param,
-            start_date.query_param,
-            end_date.query_param,
-            min_price.query_param,
-            max_price.query_param,
-            PerPage(200).query_param,
-        )
-
-        for i in range(3):
-            _url = url.copy_url()
-            _url.set_params(Page(i + 1).query_param)
-            urls.append(_url)
-
-    web_loader_config = WebLoaderConfig(
-        [*urls],
-        callbacks_list_on_result=result_processors,
-        proxy=core_settings.DEFAULTS.get("PROXY", None),
-    )
-
-    page_loader = AiohttpDlTransport(web_loader_config)
-    download_results = await page_loader.a_run()
-
-    logger.info(f"Работа завершена. Получено {len(download_results)} результатов.")
-
-    # 3. для каждого набора (город-даты-интервал пагинации) скачать и сохранить страницы списка контрактов
-    # 4. Парсинг: извлечь номера контрактов (ссылки) - сохранить в файл построчно
-    #   4.1 сохраним файлы страниц для последующего парсинга без скачивания
-    # 5. скачивать контракты по сслыкам (как хранить файлы документации???)
-    #   5.1 проверить иредварительно наличие скачанного контракта
-    # 6. извлечь данные о контрактах в БД, файлы сохранить
-    #
-    # надо предусмотреть возможность сразу проверять номера контрактов в скачанных
-    # страницах пагинации - чтиобы оставнавливать скачивание если уже все закачано ранее
-    # порядок сортировки скачивания старниц пагинации проверить - сначала надо самые свежие
-    #
-
-
-"""

@@ -1,4 +1,4 @@
-class RetriableNetworkError(Exception):
+class RetriableNetworkException(Exception):
     """Ошибка сети, которая может быть повторена.
     Например, при загрузке страницы возникла ошибка сети,
     но при повторной попытке она может быть успешно загружена.
@@ -7,13 +7,13 @@ class RetriableNetworkError(Exception):
     pass
 
 
-class NotRetriableNetworkError(Exception):
+class NotRetriableNetworkException(Exception):
     """Ошибка сети, которая не может быть повторена."""
 
     pass
 
 
-class ExceededRetryAttemptsError(Exception):
+class ExceededRetryAttemptsException(Exception):
     """Исчерпаны попытки скачать страницы"""
 
     pass
@@ -28,9 +28,24 @@ class NoNewContractsException(Exception):
     pass
 
 
-class NoDataLoaded(Exception):
+class NoDataLoadedException(Exception):
     """Данные не были загружены, хотя загрузка прошла без ошибок.
     Например, при загрузке страницы не было найдено данных, которые должны были быть там.
     """
-
     pass
+
+
+class FailedContractFetchException(Exception):
+    """Ошибка при загрузке контракта.
+    Например, при загрузке страницы контракта возникла ошибка сети, или страница была
+    """
+    def __init__(self, contract_num: str, ecp_type, message: str):
+        self.contract_num = contract_num
+        self.ecp_type = ecp_type
+        self.message = message
+        super().__init__(
+            f"Failed fetching contract num {self.contract_num} "
+            f"with exception {self.ecp_type} "
+            f"{self.message}"
+        )
+

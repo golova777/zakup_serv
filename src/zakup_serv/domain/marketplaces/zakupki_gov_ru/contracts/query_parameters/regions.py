@@ -1,18 +1,21 @@
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.base import QueryParam
 from zakup_serv.infrastructure.adapters import QueryParamAdapter
 
 query_params = MARKETPLACE_INFO["44FZ"]["query_params"]
 
 
-class Region:
+class Region(QueryParam):
     def __init__(self, name: str, region_id: str):
+        super().__init__()
         self.region_name = name
         self.region_id = region_id
         self.query_param_name = query_params.CUSTOMER_REGION.value
         self.query_param = QueryParamAdapter(self.query_param_name, self.region_id)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.region_name}, {self.region_id}, {self.query_param})"
+        return (f"{self.__class__.__name__}(region_name={self.region_name}, "
+                f"region_id={self.region_id}, query_param_name={self.query_param})")
 
 
 class ContractRegions:
@@ -29,7 +32,8 @@ class ContractRegions:
         _regions_objs = list()
 
         try:
-            for region_name, region_id in regions.items():
+            # for region_name, region_id in regions.items():
+            for region_id, region_name in regions.items():
                 region = Region(region_name, region_id)
                 _regions_objs.append(region)
         except TypeError:

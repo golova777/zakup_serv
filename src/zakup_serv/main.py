@@ -25,23 +25,24 @@ async def async_main():
     ]
 
     regions = {
-        # "Moskva": "77000000000",
-        # "Moskva obl": "50000000000",
-        "Костромская область": "44000000000",
-        # "Yaroslavl region": "76000000000",
-        # "Vladimir region": "33000000000",
-        # "Ivanovo region": "37000000000",
+        # "77000000000": "Moskva",
+        # "50000000000":"Moskva obl",
+        "44000000000": "Костромская область",
+        # "76000000000": "Yaroslavl region",
+        # "33000000000": "Vladimir region",
+        # "37000000000": "Ivanovo region",
     }
 
-    contract_list_pages = FZ44_ContractsLists(
+    contracts = FZ44_ContractsLists(
         regions=regions,
         from_date="01.01.2024",
         to_date="31.12.2024",
         callbacks_on_result=callbacks,
     )
 
-    # await contract_list_pages.a_get_all_region_price_spans()
-    # await contract_list_pages.a_get_all_contract_lists_pages(per_page_items=50)
+    # await contracts.a_get_price_spans()
+    # await contracts.a_get_contracts_pages(per_page_items=50)
+    await contracts.a_get_contracts_data(concurrent=2)
 
 
     # статистика вызовов функций
