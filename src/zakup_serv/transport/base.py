@@ -3,7 +3,7 @@ from collections.abc import Callable
 from abc import ABC, abstractmethod
 import inspect
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+from zakup_serv.infrastructure.urls import (
     URLRequest,
     URLResult,
 )

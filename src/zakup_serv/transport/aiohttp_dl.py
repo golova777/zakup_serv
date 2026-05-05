@@ -6,7 +6,7 @@ from typing import Generator, Callable
 import aiohttp
 import logging
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+from zakup_serv.infrastructure.urls import (
     URLRequest,
     URLResult,
 )

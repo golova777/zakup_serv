@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
-    URLRequest,
+from zakup_serv.infrastructure.urls import (
     URLResult,
 )
 

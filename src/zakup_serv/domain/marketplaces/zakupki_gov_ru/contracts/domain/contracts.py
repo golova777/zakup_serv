@@ -4,7 +4,6 @@ import os
 import ast
 import re
 from concurrent.futures import ProcessPoolExecutor
-from os.path import isdir
 from pathlib import Path
 from pprint import pprint
 from typing import Callable, Any, Iterator
@@ -13,10 +12,7 @@ import aiofiles
 from bs4 import BeautifulSoup
 from copy import deepcopy
 
-from prompt_toolkit.output import create_output
-
-from zakup_serv.domain.marketplaces.zakupki_gov_ru import contracts
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.contract_config import MARKETPLACE_INFO
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.base import QueryParam
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.dates import (
     StartDate,
@@ -34,11 +30,10 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.re
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.regions import (
     ContractRegions,
 )
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+from zakup_serv.infrastructure.urls import (
     URLRequest,
     URLResult,
 )
-from zakup_serv.infrastructure.CustomExceptions import FailedContractFetchException
 from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
 
 from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor

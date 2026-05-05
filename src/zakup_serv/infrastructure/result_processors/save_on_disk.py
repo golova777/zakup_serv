@@ -3,7 +3,7 @@ from typing import Any
 
 import aiofiles
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import URLResult
+from zakup_serv.infrastructure.urls import URLResult
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
 from zakup_serv.settings import SAVERS_DEFAULTS
 

@@ -1,7 +1,7 @@
 import re
 from bs4 import BeautifulSoup
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import URLResult
+from zakup_serv.infrastructure.urls import URLResult
 from zakup_serv.infrastructure.CustomExceptions import NoNewContractsException
 from zakup_serv.infrastructure.result_processors.base import DataProcessorInterface
 from zakup_serv.infrastructure.result_processors.decorators import net_stat_info

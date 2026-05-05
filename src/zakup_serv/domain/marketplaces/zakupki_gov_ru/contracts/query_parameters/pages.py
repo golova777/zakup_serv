@@ -1,4 +1,4 @@
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.config import MARKETPLACE_INFO
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.contract_config import MARKETPLACE_INFO
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.base import QueryParam
 from zakup_serv.infrastructure.adapters import QueryParamAdapter
 

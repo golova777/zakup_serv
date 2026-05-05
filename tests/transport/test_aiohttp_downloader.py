@@ -1,8 +1,7 @@
 import pytest
 
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
+from zakup_serv.infrastructure.urls import (
     URLRequest,
-    URLResult,
 )
 from zakup_serv.infrastructure.CustomExceptions import (
     NotRetriableNetworkException,
