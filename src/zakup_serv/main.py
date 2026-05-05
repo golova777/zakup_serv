@@ -45,6 +45,7 @@ async def async_main():
     await contracts.a_get_contracts_data(concurrent=2)
 
 
+
     # статистика вызовов функций
     pprint(net_stat_info.calls_history)
 
