@@ -6,9 +6,9 @@ query_params = TENDER_MARKETPLACE_INFO["EIS"]["query_params"]
 
 
 class Region(QueryParam):
-    def __init__(self, name: str, region_id: str):
+    def __init__(self, region_name: str, region_id: str):
         super().__init__()
-        self.region_name = name
+        self.region_name = region_name
         self.region_id = region_id
         self.query_param_name = query_params.CUSTOMER_REGION.value
         self.query_param = QueryParamAdapter(self.query_param_name, self.region_id)

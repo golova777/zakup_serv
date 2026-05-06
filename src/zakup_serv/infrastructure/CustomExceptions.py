@@ -1,3 +1,9 @@
+import logging
+
+
+# Подключим логирование
+logger = logging.getLogger(__name__)
+
 class RetriableNetworkException(Exception):
     """Ошибка сети, которая может быть повторена.
     Например, при загрузке страницы возникла ошибка сети,
@@ -49,3 +55,19 @@ class FailedContractFetchException(Exception):
             f"{self.message}"
         )
 
+
+class InconsistentDataException(Exception):
+    def __init__(self, message: str, **kwargs):
+        self.message = message
+
+        super().__init__(
+            f"Inconsistent data.\n"
+            f"message: {self.message}\n"
+            f"kwargs: {kwargs}"
+        )
+
+        logger.error(
+            f"Inconsistent data.\n"
+            f"message: {self.message}\n"
+            f"kwargs: {kwargs}"
+        )

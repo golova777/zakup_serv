@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 from enum import Enum
 
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.repos.file_system_repo import FileSystemTenderRepo
+
 load_dotenv()
 
 
@@ -15,11 +17,13 @@ class TenderQueryParams(Enum):
 
 TENDER_MARKETPLACE_INFO = {
     "EIS": {
+        "default_repository": FileSystemTenderRepo,
         "query_params": TenderQueryParams,
         "SAVE_FOLDER": "./saves/tenders/",
         "dwl_stages": {
             "tenders_pages": "tenders_pages",
         },
+        "db_limit_max_span_contracts": 5000,
         "base_url": "https://zakupki.gov.ru/epz/order/extendedsearch/results.html?"
                     "morphology=on&"
                     "search-filter=+%D0%94%D0%B0%D1%82%D0%B5+%D1%80%D0%B0%D0%B7%D0%BC%D0%B5%D1%89%D0%B5%D0%BD%D0%B8%D1%8F&"
@@ -35,9 +39,9 @@ TENDER_MARKETPLACE_INFO = {
                     "currencyIdGeneral=-1&"
                     "publishDateFrom=05.05.2026&"
                     "customerPlace=77000000000&"
-                    "customerPlaceCodes=77000000000&"
                     "gws=%D0%92%D1%8B%D0%B1%D0%B5%D1%80%D0%B8%D1%82%D0%B5+%D1%82%D0%B8%D0%BF+%D0%B7%D0%B0%D0%BA%D1%83%D0%BF%D0%BA%D0%B8",
         "default_page_num": 1,
+        "default_per_page_items": 10,
 
 
         # "base_url": "https://zakupki.gov.ru/epz/contract/search/results.html?morphology=on&"

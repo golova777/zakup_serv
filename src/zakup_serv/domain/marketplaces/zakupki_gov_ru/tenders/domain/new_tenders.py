@@ -3,61 +3,35 @@ import logging
 import os
 import ast
 import re
-from concurrent.futures import ProcessPoolExecutor
+from datetime import date
 from pathlib import Path
 from pprint import pprint
 from typing import Callable, Any, Iterator
 
 import aiofiles
+import aiohttp
 from bs4 import BeautifulSoup
 from copy import deepcopy
 
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.tender import Tender
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.base import QueryParam
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.dates import StartDate
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.pages import PerPage, Page
-from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.regions import Regions
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.regions import Regions, Region
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.repos.base import BaseTenderRepository
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.tender_config import TENDER_MARKETPLACE_INFO
-from zakup_serv.infrastructure.urls import URLRequest
+from zakup_serv.infrastructure.CustomExceptions import InconsistentDataException
+from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
+from zakup_serv.infrastructure.result_processors.extract_tender_nums import TenderNumsExtractor
+from zakup_serv.infrastructure.result_processors.save_on_disk import SaveAnyOnDisk
+from zakup_serv.infrastructure.urls import URLRequest, URLResult
+from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
 from zakup_serv.transport.base import WebLoaderConfig
 
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.contract_config import MARKETPLACE_INFO
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.base import QueryParam
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.dates import (
-#     StartDate,
-#     EndDate,
-# )
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.pages import (
-#     PerPage,
-#     Page,
-# )
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.prices import (
-#     MinPrice,
-#     MaxPrice,
-# )
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.reestr_number import ReestrNumber
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.query_parameters.regions import (
-#     ContractRegions,
-# )
-# from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.urls import (
-#     URLRequest,
-#     URLResult,
-# )
-# from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
-#
-# from zakup_serv.infrastructure.result_processors.extract_contract_nums import ContractNumsExtractor
-# from zakup_serv.infrastructure.result_processors.save_on_disk import SaveAnyOnDisk
-# from zakup_serv.settings import NET_DEFAULTS, SAVERS_DEFAULTS
-# from zakup_serv.transport.aiohttp_dl import AiohttpDlTransport
-# from zakup_serv.transport.base import WebLoaderConfig
 
 # Подключим логирование
 logger = logging.getLogger(__name__)
 
-"""
-взодящие параметры
-список регионов (или один регион)
-дата выборки (от и до)
-
-"""
 
 
 class FzNewTenders:
@@ -65,10 +39,11 @@ class FzNewTenders:
         self,
         regions: dict[str, str] = None,
         from_date: str = None,
-        to_date: str = None,
+        # to_date: str = None,
         per_page_items: int | None = None,
         callbacks_on_result: list[Callable] | None = None,
         marketplace_config: dict = TENDER_MARKETPLACE_INFO["EIS"],
+        repository: BaseTenderRepository | None = None,
     ):
         # конфиг площадки
         self.marketplace_config = marketplace_config
@@ -76,14 +51,14 @@ class FzNewTenders:
         self.regions: dict[str, str] = (
             regions if regions else self.marketplace_config["regions"]
         )
-        self.from_date: str = (
-            from_date
-            if from_date
-            else self.marketplace_config["fallback_dates"]["from"]
-        )
-        self.to_date: str = (
-            to_date if to_date else self.marketplace_config["fallback_dates"]["to"]
-        )
+        # self.from_date: str = (
+        #     from_date
+        #     if from_date
+        #     else self.marketplace_config["fallback_dates"]["from"]
+        # )
+        # self.to_date: str = (
+        #     to_date if to_date else self.marketplace_config["fallback_dates"]["to"]
+        # )
         self.per_page_items: int = (
             per_page_items
             if per_page_items
@@ -92,60 +67,61 @@ class FzNewTenders:
         self.callbacks_on_result: list[Callable] = (
             callbacks_on_result if callbacks_on_result else []
         )
+        # репозиторий хранения
+        self.repository = repository if repository else self.marketplace_config["default_repository"]
 
         # Конфиги для каждого Региона+Диапазон дат
-        self.web_loader_configs: list[WebLoaderConfig] = (
-            self.prepare_web_loader_configs()
-        )
+        # self.web_loader_configs: list[WebLoaderConfig] = (
+        #     self.prepare_web_loader_configs()
+        # )
 
 
-    def _set_contracts_single_web_loader_config(self, target: dict, link: str) -> WebLoaderConfig:
-        # target_contract = {
-        #     "region_id": region_dir.name,
-        #     "number": contract_num,
-        #     "file_name": curr_file.name,
-        #     "file": curr_file,
-        #     "processed_file_name": f"{processed_suffix}{curr_file.name}",
-        #     "processed_file": curr_file.with_name(f"{processed_suffix}{curr_file.name}"),
-        #     "date_from": self.from_date,
-        #     "date_to": self.to_date,
-        #     "save_dirs": [],
-        # }
+    # def _set_contracts_single_web_loader_config(self, target: dict, link: str) -> WebLoaderConfig:
+    #     # target_contract = {
+    #     #     "region_id": region_dir.name,
+    #     #     "number": contract_num,
+    #     #     "file_name": curr_file.name,
+    #     #     "file": curr_file,
+    #     #     "processed_file_name": f"{processed_suffix}{curr_file.name}",
+    #     #     "processed_file": curr_file.with_name(f"{processed_suffix}{curr_file.name}"),
+    #     #     "date_from": self.from_date,
+    #     #     "date_to": self.to_date,
+    #     #     "save_dirs": [],
+    #     # }
+    #
+    #     url = URLRequest(link)
+    #
+    #     url.set_query_params(
+    #         ReestrNumber(target['number']),
+    #     )
+    #
+    #     web_config = WebLoaderConfig(
+    #         [
+    #             url,
+    #         ],
+    #     )
+    #
+    #     return web_config
 
-        url = URLRequest(link)
 
-        url.set_query_params(
-            ReestrNumber(target['number']),
-        )
-
-        web_config = WebLoaderConfig(
-            [
-                url,
-            ],
-        )
-
-        return web_config
-
-
-    def _set_tender_pages_single_web_loader_config(self, target: dict) -> WebLoaderConfig:
+    def _get_tender_web_config(self, target: dict) -> WebLoaderConfig:
 
         url = URLRequest(self.marketplace_config["base_url"])
 
-        region = Regions(
-            {target["region_id"]: target["region_name"]}
-        ).regions[0]
-
         url.set_query_params(
-            region,
+            Region(region_name=target["region_name"], region_id=target["region_id"]),
             StartDate(target['date_from']),
             # EndDate(target['date_to']),
             PerPage(target['per_page_items']),
             Page(self.marketplace_config["default_page_num"]),
         )
+        url.region_id = target["region_id"]
+        url.date_from = target['date_from']
+        url.region_name = target['region_name']
 
         # установим иерархию сохранения файлов
 
-        dir1 = "tenders_lists"
+        dir1 = "tenders"
         dir2 = target['date_from']
         dir3 = "_".join([target['region_id'], target['region_name']])
         url.save_directories.extend([dir1, dir2, dir3])
@@ -159,173 +135,174 @@ class FzNewTenders:
         return web_config
 
 
-    def prepare_web_loader_configs(self) -> list[WebLoaderConfig]:
+    # def prepare_web_loader_configs(self) -> list[WebLoaderConfig]:
+    #
+    #     regions = Regions(self.regions).regions
+    #
+    #     configs = []
+    #
+    #     for region in regions:
+    #         url = URLRequest(self.marketplace_config["base_url"])
+    #
+    #         url.set_query_params(
+    #             region,
+    #             StartDate(self.from_date),
+    #             EndDate(self.to_date),
+    #             MinPrice(self.marketplace_config["price"][0]),
+    #             MaxPrice(self.marketplace_config["price"][1]),
+    #             PerPage(self.per_page_items),
+    #             Page(1),
+    #         )
+    #
+    #         # установим иерархию сохранения файлов
+    #         dir1 = region.region_name
+    #         dir2 = "_".join([self.from_date, self.to_date])
+    #         url.save_directories.extend([dir1, dir2])
+    #
+    #         web_config = WebLoaderConfig(
+    #             [
+    #                 url,
+    #             ],
+    #             callbacks_list_on_result=self.callbacks_on_result,
+    #         )
+    #
+    #         configs.append(web_config)
+    #
+    #     return configs
 
-        regions = ContractRegions(self.regions).regions
 
-        configs = []
+    # @net_stat_info()
+    # async def a_get_current_region_price_spans(self, config: WebLoaderConfig) -> list:
+    #
+    #     # список диапазонов цен, где будем дробить диапазон
+    #     # и после переносить из него подходящие диапазогны
+    #     init_prices_spans = [list(self.marketplace_config["price"])]
+    #     # результирующий список диапазонов цен, которые подходят по количеству контрактов
+    #     result_prices_spans = []
+    #     # максимально допустимое число контрактов на ценовой диапазон для того, чтобы его не дробить
+    #     max_span_contracts = self.marketplace_config["max_span_contracts"]
+    #
+    #     logger.info(
+    #         f"Start search price spans for region "
+    #         f"{config.urls[0].region_name}[id={config.urls[0].region_id}]"
+    #     )
+    #     while len(init_prices_spans) > 0:
+    #         # print(result_prices_spans)
+    #         # 1.  получить страницы для извлечения
+    #         # количества контрактов для каждого диапазона цен
+    #         tasks = [
+    #             asyncio.create_task(
+    #                 self._a_fetch_page(
+    #                     deepcopy(config),
+    #                     [
+    #                         MinPrice(span[0]),
+    #                         MaxPrice(span[1])
+    #                     ],
+    #                 )
+    #             )
+    #             for span in init_prices_spans
+    #         ]
+    #
+    #         pass
+    #         span_results_pages = await asyncio.gather(*tasks, return_exceptions=True)
+    #         logger.info(
+    #             f"Fetched {len(span_results_pages)} URLS for price spans for region "
+    #             f"{config.urls[0].region_name}[id={config.urls[0].region_id}]"
+    #         )
+    #
+    #         # TODO а стоит ли их прсто отсевать если пришло исключение????
+    #         #  там ведь дланные могут быть всё равно
+    #         # 2. отсеять интервалы цены для которых вместо страницы пришло исключение
+    #         temp_price_spans = []
+    #         temp_price_spans_pages = []
+    #         temp_price_spans_data = []
+    #         temp_price_spans_and_num_contracts = {}
+    #         for span, span_page in zip(init_prices_spans, span_results_pages):
+    #             if isinstance(span_page.request_result, Exception):
+    #                 logger.warning(
+    #                     f"ERROR: for region {config.urls[0].region_name} "
+    #                     f"(code:{config.urls[0].region_id}) "
+    #                     f"span ({str(span)}) got exception [{type(span_page)}]"
+    #                 )
+    #                 continue
+    #             # logger.info(f"for region {config.urls[0].region_name} "
+    #             #                f"(code:{config.urls[0].region_id}) "
+    #             #                f"span ({str(span)}) URL {span_page.url_request.result_url} ")
+    #             temp_price_spans.append(span)
+    #             temp_price_spans_pages.append(
+    #                 span_page.request_result
+    #             )  # сохраняем только контент страниц
+    #             temp_price_spans_data.append(
+    #                 span_page
+    #             )
+    #
+    #         # 3. получим количество контрактов для каждого диапазона цен,
+    #         # для которых успешно получили страницу
+    #         with ProcessPoolExecutor() as pool:
+    #             contracts_counts = list(
+    #                 pool.map(self._get_total_contracts, temp_price_spans_pages)
+    #             )
+    #
+    #         # 4. обработка диапазонов цен в зависимости от количества контрактов в них
+    #         for span, total_contracts, url_result in zip(temp_price_spans, contracts_counts, temp_price_spans_data):
+    #
+    #             region_name = config.urls[0].region_name
+    #             region_id = config.urls[0].region_id
+    #             print(
+    #                 f"For {region_name} (code={region_id}) "
+    #                 f"span ({str(span)}) got {total_contracts} contracts "
+    #                 # f"URL: {url_result.url_request.result_url if url_result.url_request else 'N/A'}"
+    #             )
+    #
+    #             if total_contracts == 0:
+    #                 # В этом диапазоне контрактов нет - удалим его из начального списка
+    #                 init_prices_spans.remove(span)
+    #                 continue
+    #
+    #             if total_contracts < max_span_contracts > 0:
+    #                 # Этот диапазон цен дробить не надо - переносим его в result_prices_spans
+    #                 result_prices_spans.append(span)  # добавим в результат
+    #                 init_prices_spans.remove(span)  # удалим из начального списка
+    #                 temp_price_spans_and_num_contracts[total_contracts] = span
+    #             else:
+    #                 # Этот диапазон цен надо дробить -
+    #                 # разделим его пополам и добавим обе половины обратно в init_prices_spans
+    #                 mid_price = (span[0] + span[1]) // 2
+    #                 new_span1 = [span[0], mid_price]
+    #                 new_span2 = [mid_price + 1, span[1]]
+    #                 init_prices_spans.append(new_span1)
+    #                 init_prices_spans.append(new_span2)
+    #                 init_prices_spans.remove(span)  # удалим из начального списка
+    #
+    #     logger.info(
+    #         f"Price_spans for region {config.urls[0].region_name}[id={config.urls[0].region_id}] "
+    #         f"got results: \n{result_prices_spans}"
+    #     )
+    #
+    #     # запишем в файл
+    #     region_id = config.urls[0].region_id
+    #     region_name = config.urls[0].region_name
+    #     date_from = config.urls[0].date_from
+    #     date_to = config.urls[0].date_to
+    #     filename = f"{region_id}_{region_name}.txt"
+    #     await self._a_save_data_to_file(
+    #         # TODO вместо result_prices_spans нужно сделать вызов как на следующей строке
+    #         # self._normalize_price_spans(temp_price_spans_and_num_contracts),
+    #         result_prices_spans,
+    #         filename,
+    #         folders=[
+    #             self.marketplace_config['dwl_stages']['price_spans'],
+    #             f"{self.from_date}_{self.to_date}",
+    #         ]
+    #     )
+    #
+    #     return result_prices_spans
 
-        for region in regions:
-            url = URLRequest(self.marketplace_config["base_url"])
-
-            url.set_query_params(
-                region,
-                StartDate(self.from_date),
-                EndDate(self.to_date),
-                MinPrice(self.marketplace_config["price"][0]),
-                MaxPrice(self.marketplace_config["price"][1]),
-                PerPage(self.per_page_items),
-                Page(1),
-            )
-
-            # установим иерархию сохранения файлов
-            dir1 = region.region_name
-            dir2 = "_".join([self.from_date, self.to_date])
-            url.save_directories.extend([dir1, dir2])
-
-            web_config = WebLoaderConfig(
-                [
-                    url,
-                ],
-                callbacks_list_on_result=self.callbacks_on_result,
-            )
-
-            configs.append(web_config)
-
-        return configs
-
-    @net_stat_info()
-    async def a_get_current_region_price_spans(self, config: WebLoaderConfig) -> list:
-
-        # список диапазонов цен, где будем дробить диапазон
-        # и после переносить из него подходящие диапазогны
-        init_prices_spans = [list(self.marketplace_config["price"])]
-        # результирующий список диапазонов цен, которые подходят по количеству контрактов
-        result_prices_spans = []
-        # максимально допустимое число контрактов на ценовой диапазон для того, чтобы его не дробить
-        max_span_contracts = self.marketplace_config["max_span_contracts"]
-
-        logger.info(
-            f"Start search price spans for region "
-            f"{config.urls[0].region_name}[id={config.urls[0].region_id}]"
-        )
-        while len(init_prices_spans) > 0:
-            # print(result_prices_spans)
-            # 1.  получить страницы для извлечения
-            # количества контрактов для каждого диапазона цен
-            tasks = [
-                asyncio.create_task(
-                    self._a_fetch_page(
-                        deepcopy(config),
-                        [
-                            MinPrice(span[0]),
-                            MaxPrice(span[1])
-                        ],
-                    )
-                )
-                for span in init_prices_spans
-            ]
-
-            pass
-            span_results_pages = await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info(
-                f"Fetched {len(span_results_pages)} URLS for price spans for region "
-                f"{config.urls[0].region_name}[id={config.urls[0].region_id}]"
-            )
-
-            # TODO а стоит ли их прсто отсевать если пришло исключение????
-            #  там ведь дланные могут быть всё равно
-            # 2. отсеять интервалы цены для которых вместо страницы пришло исключение
-            temp_price_spans = []
-            temp_price_spans_pages = []
-            temp_price_spans_data = []
-            temp_price_spans_and_num_contracts = {}
-            for span, span_page in zip(init_prices_spans, span_results_pages):
-                if isinstance(span_page.request_result, Exception):
-                    logger.warning(
-                        f"ERROR: for region {config.urls[0].region_name} "
-                        f"(code:{config.urls[0].region_id}) "
-                        f"span ({str(span)}) got exception [{type(span_page)}]"
-                    )
-                    continue
-                # logger.info(f"for region {config.urls[0].region_name} "
-                #                f"(code:{config.urls[0].region_id}) "
-                #                f"span ({str(span)}) URL {span_page.url_request.result_url} ")
-                temp_price_spans.append(span)
-                temp_price_spans_pages.append(
-                    span_page.request_result
-                )  # сохраняем только контент страниц
-                temp_price_spans_data.append(
-                    span_page
-                )
-
-            # 3. получим количество контрактов для каждого диапазона цен,
-            # для которых успешно получили страницу
-            with ProcessPoolExecutor() as pool:
-                contracts_counts = list(
-                    pool.map(self._get_total_contracts, temp_price_spans_pages)
-                )
-
-            # 4. обработка диапазонов цен в зависимости от количества контрактов в них
-            for span, total_contracts, url_result in zip(temp_price_spans, contracts_counts, temp_price_spans_data):
-
-                region_name = config.urls[0].region_name
-                region_id = config.urls[0].region_id
-                print(
-                    f"For {region_name} (code={region_id}) "
-                    f"span ({str(span)}) got {total_contracts} contracts "
-                    # f"URL: {url_result.url_request.result_url if url_result.url_request else 'N/A'}"
-                )
-
-                if total_contracts == 0:
-                    # В этом диапазоне контрактов нет - удалим его из начального списка
-                    init_prices_spans.remove(span)
-                    continue
-
-                if total_contracts < max_span_contracts > 0:
-                    # Этот диапазон цен дробить не надо - переносим его в result_prices_spans
-                    result_prices_spans.append(span)  # добавим в результат
-                    init_prices_spans.remove(span)  # удалим из начального списка
-                    temp_price_spans_and_num_contracts[total_contracts] = span
-                else:
-                    # Этот диапазон цен надо дробить -
-                    # разделим его пополам и добавим обе половины обратно в init_prices_spans
-                    mid_price = (span[0] + span[1]) // 2
-                    new_span1 = [span[0], mid_price]
-                    new_span2 = [mid_price + 1, span[1]]
-                    init_prices_spans.append(new_span1)
-                    init_prices_spans.append(new_span2)
-                    init_prices_spans.remove(span)  # удалим из начального списка
-
-        logger.info(
-            f"Price_spans for region {config.urls[0].region_name}[id={config.urls[0].region_id}] "
-            f"got results: \n{result_prices_spans}"
-        )
-
-        # запишем в файл
-        region_id = config.urls[0].region_id
-        region_name = config.urls[0].region_name
-        date_from = config.urls[0].date_from
-        date_to = config.urls[0].date_to
-        filename = f"{region_id}_{region_name}.txt"
-        await self._a_save_data_to_file(
-            # TODO вместо result_prices_spans нужно сделать вызов как на следующей строке
-            # self._normalize_price_spans(temp_price_spans_and_num_contracts),
-            result_prices_spans,
-            filename,
-            folders=[
-                self.marketplace_config['dwl_stages']['price_spans'],
-                f"{self.from_date}_{self.to_date}",
-            ]
-        )
-
-        return result_prices_spans
-
-    @staticmethod
-    def _normalize_price_spans(price_spans: list[list]) -> list[list]:
-        # TODO сделать нормализацию списка промежутков цен.
-
-        return price_spans
+    # @staticmethod
+    # def _normalize_price_spans(price_spans: list[list]) -> list[list]:
+    #     # TODO сделать нормализацию списка промежутков цен.
+    #
+    #     return price_spans
 
 
     @staticmethod
@@ -372,105 +349,143 @@ class FzNewTenders:
                     yield current_dir / f
 
 
-    @staticmethod
-    async def _read_one_file(path: Path) -> str:
-        ''' вернёт содержимое файла асинхронно'''
-        async with aiofiles.open(path, mode="r", encoding="utf-8") as f:
-            return await f.read()
+    # @staticmethod
+    # async def _read_one_file(path: Path) -> str:
+    #     ''' вернёт содержимое файла асинхронно'''
+    #     async with aiofiles.open(path, mode="r", encoding="utf-8") as f:
+    #         return await f.read()
+    #
+    #
+    # async def _a_get_target_span_files_data(
+    #         self,
+    #         target_dir: Path
+    # ) -> list[dict]:
+    #     # прочитать директории с ценовыми промежутками
+    #     # для регионов для текущих дат from_date и to_date
+    #     found_target_dir = None
+    #     found_target_files = []
+    #     targets = []
+    #
+    #     for p in self._walk_dir_tree(target_dir, include_dirs=True):
+    #         if p.is_dir() and p.name == f"{self.from_date}_{self.to_date}":
+    #             found_target_dir = p
+    #
+    #             for file_obj in self._walk_dir_tree(found_target_dir):
+    #                 found_target_files.append(file_obj)
+    #
+    #     if len(found_target_files) == 0:
+    #         #  файлов для обработки не нашлось - останов
+    #         raise RuntimeError("Nothing to do (no files)... Exiting...")
+    #
+    #     tasks = [asyncio.create_task(self._read_one_file(path)) for path in found_target_files]
+    #
+    #     results = await asyncio.gather(*tasks)
+    #
+    #     for result, file_obj in zip(results, found_target_files):
+    #         # print(f"Read data: {result}")
+    #         result = ast.literal_eval(result)
+    #         region_id = file_obj.name.split("_")[0]
+    #         region_name = file_obj.name.split("_")[1]
+    #
+    #         targets.append({
+    #             "region_id": region_id,
+    #             "region_name": region_name,
+    #             "file_name": file_obj.name,
+    #             "file": file_obj,
+    #             "data": list(result),
+    #             "length": len(result),
+    #             "date_from": self.from_date,
+    #             "date_to": self.to_date,
+    #             "per_page_items": self.per_page_items,
+    #         })
+    #
+    #     return targets
 
-
-    async def _a_get_target_span_files_data(
-            self,
-            target_dir: Path
-    ) -> list[dict]:
-        # прочитать директории с ценовыми промежутками
-        # для регионов для текущих дат from_date и to_date
-        found_target_dir = None
-        found_target_files = []
-        targets = []
-
-        for p in self._walk_dir_tree(target_dir, include_dirs=True):
-            if p.is_dir() and p.name == f"{self.from_date}_{self.to_date}":
-                found_target_dir = p
-
-                for file_obj in self._walk_dir_tree(found_target_dir):
-                    found_target_files.append(file_obj)
-
-        if len(found_target_files) == 0:
-            #  файлов для обработки не нашлось - останов
-            raise RuntimeError("Nothing to do (no files)... Exiting...")
-
-        tasks = [asyncio.create_task(self._read_one_file(path)) for path in found_target_files]
-
-        results = await asyncio.gather(*tasks)
-
-        for result, file_obj in zip(results, found_target_files):
-            # print(f"Read data: {result}")
-            result = ast.literal_eval(result)
-            region_id = file_obj.name.split("_")[0]
-            region_name = file_obj.name.split("_")[1]
-
-            targets.append({
-                "region_id": region_id,
-                "region_name": region_name,
-                "file_name": file_obj.name,
-                "file": file_obj,
-                "data": list(result),
-                "length": len(result),
-                "date_from": self.from_date,
-                "date_to": self.to_date,
-                "per_page_items": self.per_page_items,
-            })
-
-        return targets
-
-    async def _a_iterate_pages_search_contracts(
+    async def _a_iterate_tenders_search_pages(
             self,
             web_config: WebLoaderConfig,
-            price_from: int,
-            price_to: int,
+            repository: BaseTenderRepository,
             start_page: int = 1,
-            per_page_items: int = 50,
+            per_page_items: int = 10,
             save_dirs: list[str] | None = None,
     ) -> list[str]:
+
         # Здесь будет идти последовательный перебор страниц
-        # с проверокй на наличие контрактов
+        # с проверкой на наличие закупок
         region_id = web_config.urls[0].region_id
+        region_name = web_config.urls[0].region_name
         date_from = web_config.urls[0].date_from
-        date_to = web_config.urls[0].date_to
+
+        # здесь не должно быть None
+        if not region_id or not region_name or not date_from:
+            raise InconsistentDataException(
+                "some is None",
+                par1=region_id,
+                par2=region_name,
+                par3=date_from
+            )
 
         max_pages = int(
             self.marketplace_config["db_limit_max_span_contracts"] / per_page_items
         )
-        contract_numbers = []
 
+        # Хранит объекты Tender()
+        # для текущего скачивания на один регион
+        tenders = []
+
+        # пройдём по всем доступным страницам выдачи поиска закупок
         for page_number in range(start_page, max_pages+1):
 
             url_result = await self._a_fetch_page(
                 deepcopy(web_config),
                 [
+                    # Здесь можно кастомизировать запрос к перечню закупок
+                    # дополнительными QueryParam()
                     Page(page_number),
-                    MinPrice(price_from),
-                    MaxPrice(price_to),
                 ],
             )
-            logger.info(f"Start page number: {page_number} "
-                        f"for region {web_config.urls[0].region_id} "
-                        f"for price span {price_from} to {price_to} "
-                        # f"URL: {url_result.url_request.result_url}"
-                        )
+            logger.info(
+                f"Fetched tender listing page №{page_number} "
+                f"for region {web_config.urls[0].region_id} "
+                # f"URL: {url_result.url_request.result_url}"
+            )
 
-            contracts_list = await asyncio.to_thread(ContractNumsExtractor.get_contracts, url_result)
+            # Извлечь номера закупок со страницы
+            # вернёт [(номер, ссылка), ...] или []
+            tenders_list = await asyncio.to_thread(TenderNumsExtractor.get_tenders, url_result)
+            # преобразуем в объекты Tender()
+            if tenders_list:
+                tenders_list = [
+                    Tender(
+                        number=tender[0],
+                        link=tender[1],
+                        region_name=region_name,
+                        region_id=region_id,
+                        publish_date=date_from,
+                    )
+                    for tender
+                    in tenders_list
+                ]
 
-            if len(contracts_list) == 0:
-                # нет больше контрактов
-                logger.info(f"No more contracts on page {page_number} "
-                            f"for region {web_config.urls[0].region_id} "
-                            f"for price span {price_from} to {price_to}")
+            # Отсеем номера тендеров, которые уже есть в репозитории - оставим только новые
+            new_tenders_list = [
+                tender
+                for tender
+                in tenders_list
+                if repository.is_new_tender_num(tender.number)
+            ]
+
+            if len(new_tenders_list) == 0:
+                # нет больше тендеров
+                logger.info(f"No more tenders on page {page_number} "
+                            f"for region {web_config.urls[0].region_id} ")
                 break
             else:
-                # есть контракты
-                contract_numbers.extend(contracts_list)
+                # есть тендеры
+                # tenders.extend(tenders_list)
+                # tenders.extend([(tender.number, tender.link) for tender in tenders_list])
+                tenders.extend(new_tenders_list)
+
 
                 # сохраним страницу на диск
                 # await SaveAnyOnDisk.a_process_it(
@@ -479,73 +494,142 @@ class FzNewTenders:
                 #     folders=save_dirs
                 # )
 
-        # сохраним только номера контрактов на диск
+        # сохраним только номера тендеров на диск
         await SaveAnyOnDisk.a_process_it(
-            contract_numbers,
-            f"{region_id}_date_{date_from}_{date_to}_price_{price_from}_{price_to}_counts_{len(contract_numbers)}.txt",
+            tenders,
+            f"{region_id}_date_{date_from}_counts_{len(tenders)}.txt",
             folders=save_dirs
         )
-        # это список контрактов для ценового диапазона
-        # для конкретного региона в определенный диапазон дат
-        return contract_numbers
+
+        # вернём [Tender(), ...]
+        return tenders
 
 
-    async def _get_tenders(
+    # async def _get_tenders(
+    #         self,
+    #         target: dict,
+    #         web_config: WebLoaderConfig,
+    # ):
+    #         total_contracts_list = []
+    #
+    #         # для каждого ценового диапазона скачиваем страницы пагинации
+    #         tasks = [
+    #             asyncio.create_task(
+    #                 self._a_iterate_tenders_search_pages(
+    #                     deepcopy(web_config),
+    #                     price_from=span[0],
+    #                     price_to=span[1],
+    #                     start_page = 1,
+    #                     per_page_items = target['per_page_items'],
+    #                     save_dirs=target['save_dirs'],
+    #                 )
+    #             )
+    #             for span in target['data']
+    #             # for span in [target['data'][3],]
+    #         ]
+    #
+    #         contract_lists = await asyncio.gather(*tasks, return_exceptions=True)
+    #
+    #         for contracts in contract_lists:
+    #             if type(contracts) is list and len(contracts) > 0:
+    #                 total_contracts_list.extend(contracts)
+    #             else:
+    #                 raise RuntimeError(f"ERROR: strange contract list: {type(contracts)} "
+    #                                    f"with content {contracts}")
+    #
+    #         # сохраним список контрактов
+    #         # await SaveAnyOnDisk.a_process_it(
+    #         #     total_contracts_list,
+    #         #     f"{target['region_id']}_contracts_numbers_{len(total_contracts_list)}.txt",
+    #         #     folders=target['save_dirs']
+    #         #
+    #         # )
+    #
+    #         logger.info(
+    #             f"Fetched {len(total_contracts_list)} contract numbers "
+    #             f"for contracts pages for region "
+    #             f"{target['region_name']} (id: {target['region_id']})"
+    #         )
+    #
+    #         return total_contracts_list
+
+
+    async def a_get_tenders(
             self,
-            target: dict,
-            web_config: WebLoaderConfig,
+            per_page_items: int = 10,
+            concurrent: int = 1,
+            from_date: str = date.today().strftime("%d.%m.%Y"),
     ):
-            total_contracts_list = []
+        # [(target, conf), ...]
+        targets_confs = []
+        # количество одновременно обрабатываемых регионов
+        semaphore = asyncio.Semaphore(concurrent)
 
-            # для каждого ценового диапазона скачиваем страницы пагинации
-            tasks = [
-                asyncio.create_task(
-                    self._a_iterate_pages_search_contracts(
-                        deepcopy(web_config),
-                        price_from=span[0],
-                        price_to=span[1],
-                        start_page = 1,
-                        per_page_items = target['per_page_items'],
-                        save_dirs=target['save_dirs'],
-                    )
-                )
-                for span in target['data']
-                # for span in [target['data'][3],]
+        # 0. создадим конфиги для каждого региона
+        for region_id, region_name in self.regions.items():
+            logger.info(f"Start searching tenders pages for region {region_name} "
+                        f"(id: {region_id})")
+            target = dict()
+
+            target["date_from"] = from_date
+            target["region_id"] = region_id
+            target["region_name"] = region_name
+            target['per_page_items'] = per_page_items
+            target['save_dirs'] = [
+                self.marketplace_config['dwl_stages']['tenders_pages'],
+                f'{target["date_from"]}',
+                f'{target["region_id"]}'
             ]
 
-            contract_lists = await asyncio.gather(*tasks, return_exceptions=True)
+            web_loader_config = self._get_tender_web_config(target)
+            pprint(web_loader_config)
+            # res = await self._get_tenders(target, web_loader_config)
 
-            for contracts in contract_lists:
-                if type(contracts) is list and len(contracts) > 0:
-                    total_contracts_list.extend(contracts)
-                else:
-                    raise RuntimeError(f"ERROR: strange contract list: {type(contracts)} "
-                                       f"with content {contracts}")
-
-            # сохраним список контрактов
-            # await SaveAnyOnDisk.a_process_it(
-            #     total_contracts_list,
-            #     f"{target['region_id']}_contracts_numbers_{len(total_contracts_list)}.txt",
-            #     folders=target['save_dirs']
-            #
-            # )
-
-            logger.info(
-                f"Fetched {len(total_contracts_list)} contract numbers "
-                f"for contracts pages for region "
-                f"{target['region_name']} (id: {target['region_id']})"
-            )
-
-            return total_contracts_list
-
-
-    async def a_get_tenders_pages(
-            self,
-            per_page_items: int | None = None,
-    ):
-        per_page_items = per_page_items or self.marketplace_config['default_per_page_items']
+            targets_confs.append((target, web_loader_config))
 
         # 1. выполним конкурентно поиск закупок для N регионов asyncio.gather...
+
+        ##############################################################
+        async def semaphore_get_tenders_pages(tender_target, tender_config):
+            async with semaphore:
+                return await self._a_iterate_tenders_search_pages(
+                    web_config=tender_config,
+                    repository=self.repository,
+                    per_page_items=tender_target['per_page_items'],
+                    save_dirs=tender_target['save_dirs'],
+                )
+
+        try:
+            tasks = [
+                asyncio.create_task(
+                    semaphore_get_tenders_pages(setting[0], setting[1],)
+                )
+                for setting
+                in targets_confs
+            ]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            error_count = 0
+            for target_config, tenders in zip(targets_confs, results):
+                config = target_config[1]
+
+                if isinstance(tenders, Exception):
+                    error_count += 1
+                    logger.warning(
+                        f"ERROR: for region {config.urls[0].region_name} "
+                        f"(code:{config.urls[0].region_id}) "
+                        f"tender search got exception [{type(tenders)}]"
+                    )
+
+            # логируем статистику выполнения
+            logger.info(
+                f"Downloaded tender numbers {len(results)}. With Errors: {error_count}"
+            )
+
+        except Exception as e:
+            logger.exception(e)
+
         # 2. для конкретного региона поиск выполняется последовательно - постранично (синхронно)
         # 2.1. задаём бесконечный генератор страниц и скачиваем страницу
         # 2.2. выделяем номера закупок и запрашиваем из репозитория  (его надо создать) закупок - какие уже присутствуют
@@ -562,35 +646,14 @@ class FzNewTenders:
         #
         #
 
-        for region_id, region_name in self.regions.items():
-            logger.info(f"Start getting tenders pages for region {region_name} "
-                        f"(id: {region_id})")
-            target = dict()
-
-            target["region_id"] = region_id
-            target["region_name"] = region_name
-            target['per_page_items'] = per_page_items
-            target['save_dirs'] = [
-                self.marketplace_config['dwl_stages']['tenders_pages'],
-                f'{target["date_from"]}',
-                f'{target["region_id"]}'
-            ]
-
-            web_loader_config = self._set_tender_pages_single_web_loader_config(target)
-            pprint(web_loader_config)
-            res = await self._get_tenders(target, web_loader_config)
-
-            pprint(res)
 
 
 
-    async def a_get_price_spans(
+    async def a_get_tenders_pages(
             self,
-            concurrent: int | None = None
+            concurrent: int = 1,
     ):
-        # Ограничение конкурентности ################################
-        concur_connects = concurrent or NET_DEFAULTS["CONCURRENT_CONNECTIONS"]
-        semaphore = asyncio.Semaphore(concur_connects)
+        semaphore = asyncio.Semaphore(concurrent)
 
         async def semaphore_get_region_price_spans(config):
             async with semaphore:
@@ -624,6 +687,7 @@ class FzNewTenders:
 
         except Exception as e:
             logger.exception(e)
+
 
     @staticmethod
     def _get_total_contracts(raw_data) -> int:

@@ -6,6 +6,7 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.domain.contracts im
     FZ44_ContractsLists,
 )
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.new_tenders import FzNewTenders
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.repos.file_system_repo import FileSystemTenderRepo
 from zakup_serv.infrastructure.logging_config import setup_logging
 from zakup_serv.infrastructure.result_processors.decorators import (
     net_stat_info,
@@ -26,28 +27,35 @@ async def async_main():
     ]
 
     regions = {
-        # "77000000000": "Moskva",
-        # "50000000000":"Moskva obl",
+        "77000000000": "Moskva",
+        "50000000000":"Moskva obl",
         "44000000000": "Костромская область",
-        # "76000000000": "Yaroslavl region",
-        # "33000000000": "Vladimir region",
-        # "37000000000": "Ivanovo region",
+        "76000000000": "Yaroslavl region",
+        "33000000000": "Vladimir region",
+        "37000000000": "Ivanovo region",
     }
 
     tenders = FzNewTenders(
         regions=regions,
-        from_date="05.05.2026",
+        repository=FileSystemTenderRepo(),
         # callbacks_on_result=callbacks,
     )
 
-    # await contracts.a_get_price_spans()
-    await tenders.a_get_tenders_pages(per_page_items=50)
+    await tenders.a_get_tenders(
+        per_page_items=50,
+        concurrent=5,
+        from_date="06.03.2026",
+    )
     # await contracts.a_get_contracts_data(concurrent=5)
 
     pprint(net_stat_info.calls_history)
 
+    ################################################################################################
+    ################################################################################################
+    ################################################################################################
+    ################################################################################################
 
-    # ##########################
+    ##########################
     # callbacks = [
     #     # SaveOnDisk().a_process_it,
     #     # ContractNumsExtractor().process_it,
@@ -72,13 +80,13 @@ async def async_main():
     # await contracts.a_get_price_spans()
     # await contracts.a_get_contracts_pages(per_page_items=50)
     # await contracts.a_get_contracts_data(concurrent=5)
-
-
-
-    # статистика вызовов функций
-
-
-
+    #
+    #
+    #
+    # # статистика вызовов функций
+    #
+    #
+    #
     # pprint(net_stat_info.calls_history)
 
 
