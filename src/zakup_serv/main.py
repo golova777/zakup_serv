@@ -21,10 +21,10 @@ async def async_main():
     logger.info("Service starting")
 
     ##########################
-    callbacks = [
-        # SaveOnDisk().a_process_it,
-        # ContractNumsExtractor().process_it,
-    ]
+    # callbacks = [
+    #     # SaveOnDisk().a_process_it,
+    #     # ContractNumsExtractor().process_it,
+    # ]
 
     regions = {
         "77000000000": "Moskva",
@@ -44,9 +44,8 @@ async def async_main():
     await tenders.a_get_tenders(
         per_page_items=50,
         concurrent=5,
-        from_date="06.03.2026",
+        from_date="07.05.2026",
     )
-    # await contracts.a_get_contracts_data(concurrent=5)
 
     pprint(net_stat_info.calls_history)
 

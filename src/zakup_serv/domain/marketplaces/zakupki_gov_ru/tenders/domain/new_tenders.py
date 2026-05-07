@@ -13,15 +13,20 @@ import aiohttp
 from bs4 import BeautifulSoup
 from copy import deepcopy
 
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.attachment_file import AttachedFile
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.tender import Tender
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.tender_types import TenderType
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.base import QueryParam
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.dates import StartDate
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.pages import PerPage, Page
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.prices import TenderMinPrice, TenderMaxPrice
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.regions import Regions, Region
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.query_parameters.tender_number import TenderNumber
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.repos.base import BaseTenderRepository
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.tender_config import TENDER_MARKETPLACE_INFO
 from zakup_serv.infrastructure.CustomExceptions import InconsistentDataException
 from zakup_serv.infrastructure.result_processors.decorators import net_stat_info
+from zakup_serv.infrastructure.result_processors.extract_tender_attachments import TenderAttachmentsExtractor
 from zakup_serv.infrastructure.result_processors.extract_tender_nums import TenderNumsExtractor
 from zakup_serv.infrastructure.result_processors.save_on_disk import SaveAnyOnDisk
 from zakup_serv.infrastructure.urls import URLRequest, URLResult
@@ -75,33 +80,21 @@ class FzNewTenders:
         #     self.prepare_web_loader_configs()
         # )
 
+    @staticmethod
+    def _get_tender_fetch_data_loader_config(
+            target: Tender,
+            link: str | None = None,
+    ) -> WebLoaderConfig:
 
-    # def _set_contracts_single_web_loader_config(self, target: dict, link: str) -> WebLoaderConfig:
-    #     # target_contract = {
-    #     #     "region_id": region_dir.name,
-    #     #     "number": contract_num,
-    #     #     "file_name": curr_file.name,
-    #     #     "file": curr_file,
-    #     #     "processed_file_name": f"{processed_suffix}{curr_file.name}",
-    #     #     "processed_file": curr_file.with_name(f"{processed_suffix}{curr_file.name}"),
-    #     #     "date_from": self.from_date,
-    #     #     "date_to": self.to_date,
-    #     #     "save_dirs": [],
-    #     # }
-    #
-    #     url = URLRequest(link)
-    #
-    #     url.set_query_params(
-    #         ReestrNumber(target['number']),
-    #     )
-    #
-    #     web_config = WebLoaderConfig(
-    #         [
-    #             url,
-    #         ],
-    #     )
-    #
-    #     return web_config
+        url = URLRequest(link)
+        url.set_query_params(TenderNumber(target.number),)
+
+        web_config = WebLoaderConfig(
+            [
+                url,
+            ],
+        )
+        return web_config
 
 
     def _get_tender_web_config(self, target: dict) -> WebLoaderConfig:
@@ -407,8 +400,10 @@ class FzNewTenders:
             repository: BaseTenderRepository,
             start_page: int = 1,
             per_page_items: int = 10,
+            price_from: int | None = None,
+            price_to: int | None = None,
             save_dirs: list[str] | None = None,
-    ) -> list[str]:
+    ) -> list[Tender]:
 
         # Здесь будет идти последовательный перебор страниц
         # с проверкой на наличие закупок
@@ -435,13 +430,19 @@ class FzNewTenders:
 
         # пройдём по всем доступным страницам выдачи поиска закупок
         for page_number in range(start_page, max_pages+1):
+            page = Page(page_number)
+            # на случай, если нужно будет отрабатывать закупки по ценовым диапазонам
+            price_min = TenderMinPrice(price_from) if price_from else None
+            price_max = TenderMaxPrice(price_to) if price_to else None
 
             url_result = await self._a_fetch_page(
                 deepcopy(web_config),
                 [
                     # Здесь можно кастомизировать запрос к перечню закупок
                     # дополнительными QueryParam()
-                    Page(page_number),
+                    page,
+                    # price_min,
+                    # price_max,
                 ],
             )
             logger.info(
@@ -451,8 +452,8 @@ class FzNewTenders:
             )
 
             # Извлечь номера закупок со страницы
-            # вернёт [(номер, ссылка), ...] или []
-            tenders_list = await asyncio.to_thread(TenderNumsExtractor.get_tenders, url_result)
+            # вернёт [(номер, ссылка, тип ФЗ), ...] или []
+            tenders_list = await asyncio.to_thread(TenderNumsExtractor().get_tenders, url_result)
             # преобразуем в объекты Tender()
             if tenders_list:
                 tenders_list = [
@@ -462,11 +463,15 @@ class FzNewTenders:
                         region_name=region_name,
                         region_id=region_id,
                         publish_date=date_from,
+                        tender_type=tender[2],
                     )
                     for tender
                     in tenders_list
                 ]
 
+            # ОТБОР ТОЛЬКО СВЕЖИХ ТЕНДЕРОВ - КОТОРЫХ НЕТ В БД
+            # TODO сделать в репозитории реальную проверку на новизну тендера.
+            #  Сейчас все считаются новыми!!!
             # Отсеем номера тендеров, которые уже есть в репозитории - оставим только новые
             new_tenders_list = [
                 tender
@@ -477,13 +482,12 @@ class FzNewTenders:
 
             if len(new_tenders_list) == 0:
                 # нет больше тендеров
+                # TODO реализовать проверку 1-2 следующих страниц с тендерами - для избыточности
                 logger.info(f"No more tenders on page {page_number} "
                             f"for region {web_config.urls[0].region_id} ")
                 break
             else:
                 # есть тендеры
-                # tenders.extend(tenders_list)
-                # tenders.extend([(tender.number, tender.link) for tender in tenders_list])
                 tenders.extend(new_tenders_list)
 
 
@@ -560,9 +564,9 @@ class FzNewTenders:
             concurrent: int = 1,
             from_date: str = date.today().strftime("%d.%m.%Y"),
     ):
-        # [(target, conf), ...]
+        # будет собирать: [(target, conf), ...]
         targets_confs = []
-        # количество одновременно обрабатываемых регионов
+        # количество одновременно обрабатываемых РЕГИОНОВ!!!
         semaphore = asyncio.Semaphore(concurrent)
 
         # 0. создадим конфиги для каждого региона
@@ -588,7 +592,6 @@ class FzNewTenders:
             targets_confs.append((target, web_loader_config))
 
         # 1. выполним конкурентно поиск закупок для N регионов asyncio.gather...
-
         ##############################################################
         async def semaphore_get_tenders_pages(tender_target, tender_config):
             async with semaphore:
@@ -599,16 +602,16 @@ class FzNewTenders:
                     save_dirs=tender_target['save_dirs'],
                 )
 
+        result_new_tenders = []  # хранит объекты Tender() для всех новых тендеров
         try:
             tasks = [
-                asyncio.create_task(
-                    semaphore_get_tenders_pages(setting[0], setting[1],)
-                )
+                asyncio.create_task(semaphore_get_tenders_pages(setting[0], setting[1],))
                 for setting
                 in targets_confs
             ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
+
 
             error_count = 0
             for target_config, tenders in zip(targets_confs, results):
@@ -620,15 +623,30 @@ class FzNewTenders:
                         f"ERROR: for region {config.urls[0].region_name} "
                         f"(code:{config.urls[0].region_id}) "
                         f"tender search got exception [{type(tenders)}]"
+                        f"exception content: {tenders}"
                     )
+                else:
+                    result_new_tenders.extend(tenders)
 
             # логируем статистику выполнения
             logger.info(
-                f"Downloaded tender numbers {len(results)}. With Errors: {error_count}"
+                f"Downloaded tender numbers {len(result_new_tenders)}. With Errors: {error_count}"
             )
 
         except Exception as e:
             logger.exception(e)
+
+        ################
+        # сохраним файлы закупок
+        ################
+
+        # result_new_tenders
+        # все новые тендеры передаём на скачивание и сохранение
+        # TODO надо отдельнеый блок semaphore конкурентности организовать
+        #  при скачивании, а параметр количества надо передавать изначально
+        saved_count = await self.a_fetch_n_save_tenders_data(result_new_tenders, self.repository)
+
+
 
         # 2. для конкретного региона поиск выполняется последовательно - постранично (синхронно)
         # 2.1. задаём бесконечный генератор страниц и скачиваем страницу
@@ -647,6 +665,21 @@ class FzNewTenders:
         #
 
 
+    async def a_fetch_n_save_tenders_data(
+            self,
+            tenders_list: list[Tender],
+            repository: BaseTenderRepository,
+    ):
+        for tender in tenders_list:
+            # TODO сделать параллельную обработку несокльких тендеров сразу
+            if tender.tender_type == TenderType.FZ44:
+                await self.a_fetch_n_save_fz44_tender_data(tender , repository)
+            elif tender.tender_type == TenderType.FZ223:
+                print("it is 223!!!!!")
+            elif tender.tender_type == TenderType.PP615:
+                print("it is 615!!!!!")
+            else:
+                raise Exception(f"Unknown tender type: {tender.tender_type}")
 
 
     async def a_get_tenders_pages(
@@ -714,95 +747,81 @@ class FzNewTenders:
         else:
             return result
 
-    @net_stat_info()
-    async def _a_fetch_contract_data(self, target_contract: dict) -> dict:
-        # нужно несколько этапов получения данных контракта
-        # 1. основные страницы из реестра контрактов
-        # 2. с основных страниц контракта: ссылки на вложенные файлы, на закупку, реестр недобросовестных
-        # 3. со страницы закупки: вложенные файлы
 
+    @net_stat_info()
+    async def a_fetch_n_save_fz44_tender_data(
+            self,
+            target_tender: Tender,
+            repository: BaseTenderRepository,
+    ):
         ###################################################
         # Фаза 1 основные страницы из реестра контрактов
-        links_phase_1 = {
-            "contract_common_info": "https://zakupki.gov.ru/epz/contract/contractCard/common-info.html?reestrNumber=_",
-            "contract_payments": "https://zakupki.gov.ru/epz/contract/contractCard/payment-info-and-target-of-order.html?reestrNumber=_",
-            "contract_execution": "https://zakupki.gov.ru/epz/contract/contractCard/process-info.html?reestrNumber=_",
-            "contract_attachments": "https://zakupki.gov.ru/epz/contract/contractCard/document-info.html?reestrNumber=_",
-            "contract_versions": "https://zakupki.gov.ru/epz/contract/contractCard/journal-version.html?reestrNumber=_",
-            "contract_logs": "https://zakupki.gov.ru/epz/contract/contractCard/event-journal.html?reestrNumber=_",
+        tender_content = {
+            "common_info": {
+                "link": "https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=",
+                "data": None,
+                "attachments": list(),
+            },
+            "documents": {
+                "link": "https://zakupki.gov.ru/epz/order/notice/zk20/view/documents.html?regNumber=",
+                "data": None,
+                "attachments": list(),
+            },
+            "event_journal": {
+                "link": "https://zakupki.gov.ru/epz/order/notice/zk20/view/event-journal.html?regNumber=",
+                "data": None,
+                "attachments": list(),
+            },
         }
 
-        # query параметр номера контракта в реестре
-        reestr_num_param = ReestrNumber(target_contract['number'])
+        # query параметр номера закупки
+        tender_num_param = TenderNumber(target_tender.number)
 
-        configs_phase_1 = []
-        tasks_phase_1 = []
-        coro_phase_1 = []
+        try:
 
-        for section, link in links_phase_1.items():
-            config = self._set_contracts_single_web_loader_config(target_contract, link)
-            configs_phase_1.append(config)
-            task = asyncio.create_task(self._a_fetch_page(config, [reestr_num_param]))
-            tasks_phase_1.append(task)
+            for section_title, section_data in tender_content.items():
+                link = section_data["link"]
+                config = self._get_tender_fetch_data_loader_config(target_tender, link)
+                fetched_section = await self._a_fetch_page(config, [tender_num_param])
+                section_data["data"] = fetched_section.request_result
+                logger.info(f"Fetched (len={len(fetched_section.request_result)} bytes) section {section_title} "
+                            f"for tender {target_tender.number} "
+                            f"for region {target_tender.region_name} "
+                            f"(region_id: {target_tender.region_id})")
 
-            coro = self._a_fetch_page(config, [reestr_num_param])
-            coro_phase_1.append(coro)
+                # проверим наличие файлов вложенных
+                tender_attachments = TenderAttachmentsExtractor().get_attachments(fetched_section)
+                if tender_attachments:
+                    # print(target_tender.link)
+                    # section_data["attachments"] = tender_attachments
+                    logger.info(f"Found {len(tender_attachments)} attachments in section {section_title} "
+                                f"for tender {target_tender.number} "
+                                f"for region {target_tender.region_name} "
+                                f"(region_id: {target_tender.region_id})")
 
-            ########################
-            res = await coro
+                    for attachment in tender_attachments:
+                        # TODO сделать параллельное скачивание файлов вложений
+                        web_config = WebLoaderConfig([URLRequest(attachment.link),],)
+                        fetched = await self._a_fetch_page(web_config)
+                        fetched_data: bytes = fetched.request_result
+                        # attachment.content = fetched_data.decode("utf-8")
+                        attachment.content = fetched_data
 
-            print(len(res.request_result))
-            ########################
+                        print(
+                            f"вложение \"{attachment.full_name}\" "
+                            f"для закупки {target_tender.number} "
+                            f"имеет размер {len(fetched_data)} bytes")
 
-            await self._a_save_data_to_file(
-                res.request_result,
-                f"{target_contract['number']}_{section}.txt",
-                target_contract['save_dirs'])
+                    # сохраним вложения в секции
+                    section_data["attachments"] = tender_attachments
 
+        except Exception as e:
+            logger.exception(e, exc_info=True)
+        else:
+            # Успешная загрузка файлов и страниц закупки - сохраним данные через репозиторий
+            target_tender.content = tender_content
 
-
-
-
-        # results = asyncio.gather(*tasks_phase_1, return_exceptions=True)
-
-        # for result, config, section in zip(results, configs_phase_1, links_phase_1.keys()):
-        #     if isinstance(result, Exception):
-        #         result_exception = result
-        #         logger.error(f"Failed fetching contract num {target_contract['number']} "
-        #                      f"for region {target_contract['region_id']} "
-        #                      f"section {section} "
-        #                      f"with exception {type(result)} "
-        #                      f"{result}")
-        #
-        #         # Ошибка при загрузке секций контракта - отмена дальнейшей загрузки
-        #         raise FailedContractFetchException(
-        #             target_contract['number'],
-        #             type(result_exception),
-        #             f"section {section} and URL {config.urls[0].result_url} "
-        #         )
-        #
-        #     # TODO пеервести в debug в последствие
-        #     logger.info(f"Fetched section {section} (len={len(result)})"
-        #                  f"for contract num {target_contract['number']} "
-        #                  f"with URL {config.urls[0].result_url}")
-        #
-        # # первая фаза контракта скачана полностью
-        # logger.info(f"Successfully fetched contract num {target_contract['number']} "
-        #             f"for region {target_contract['region_id']} ")
-        #
-        # # сохраним файлы 1 фазы на диск
-        # for result, config, section in zip(results, configs_phase_1, links_phase_1.keys()):
-        #     await self._a_save_data_to_file(
-        #         result,
-        #         f"{target_contract['number']}_{section}.txt",
-        #         target_contract['save_dirs'])
-
-
-        return {
-            "file_name": target_contract['file_name'],
-        }
-
-
+        return None
 
 
     async def a_get_contracts_data(
@@ -1076,23 +1095,25 @@ class FzNewTenders:
     @staticmethod
     async def _a_fetch_page(
             config: WebLoaderConfig,
-            params: list[QueryParam],
+            params: list[QueryParam | None] | None = None,
     ) -> URLResult:
         first = 0
 
         page_loader = AiohttpDlTransport(config)
 
-        # ссылка на функцию установки параметров url
-        set_param = page_loader.urls[first].set_query_params
-
-        # список параметров ГКД которые надо поменять
-        for param in params:
-            if not isinstance(param, QueryParam):
-                err_msg = f"param needs to be {type(QueryParam)}, not {type(param)}"
-                logger.error(err_msg)
-                raise TypeError(err_msg)
-
-        set_param(*params)  # установим новые параметры для запроса
+        if params:
+            # ссылка на функцию установки параметров url
+            set_param = page_loader.urls[first].set_query_params
+            # список параметров ГКД которые надо поменять
+            for param in params:
+                if not param:
+                    # пропустим те, что None
+                    continue
+                if not isinstance(param, QueryParam):
+                    err_msg = f"param needs to be {type(QueryParam)}, not {type(param)}"
+                    logger.error(err_msg)
+                    raise TypeError(err_msg)
+            set_param(*params)  # установим новые параметры для запроса
 
         download_results = await page_loader.a_run()
 

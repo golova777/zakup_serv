@@ -13,6 +13,9 @@ class TenderQueryParams(Enum):
     PAGE = "pageNumber"
     SORT_DIRECTION = "sortDirection"
     PER_PAGE = "recordsPerPage"
+    PRICE_FROM = "priceFromGeneral"
+    PRICE_TO = "priceToGeneral"
+    TENDER_REG_NUMBER = "regNumber"
 
 
 TENDER_MARKETPLACE_INFO = {
@@ -21,7 +24,8 @@ TENDER_MARKETPLACE_INFO = {
         "query_params": TenderQueryParams,
         "SAVE_FOLDER": "./saves/tenders/",
         "dwl_stages": {
-            "tenders_pages": "tenders_pages",
+            "tenders_pages": "1.tenders_pages",
+            "tenders_data": "2.tenders_data",
         },
         "db_limit_max_span_contracts": 5000,
         "base_url": "https://zakupki.gov.ru/epz/order/extendedsearch/results.html?"

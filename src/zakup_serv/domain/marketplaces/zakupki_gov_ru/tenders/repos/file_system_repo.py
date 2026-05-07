@@ -17,6 +17,8 @@ class FileSystemTenderRepo(BaseTenderRepository):
         pass
 
     def is_new_tender_num(self, tender: Tender) -> bool:
+        # TODO сделать в репозитории реальную проверку на новизну тендера.
+        #  Сейчас все считаются новыми!!!
         # проверка: true если tender_number нет в репозитории, иначе false
         return True
 

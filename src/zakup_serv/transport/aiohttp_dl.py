@@ -62,18 +62,22 @@ class AiohttpDlTransport(BaseWebLoader):
                 ) as response:
                     ####################
                     # ДЛЯ ОТЛАДКИ: опциональная принудительная установка HTTP статусов
-                    fake_http_code = (
-                        next(forced_http_status, None) if forced_http_status else None
-                    )
-                    response.status = (
-                        fake_http_code if fake_http_code else response.status
-                    )
+                    fake_http_code = (next(forced_http_status, None) if forced_http_status else None)
+                    response.status = (fake_http_code if fake_http_code else response.status)
                     ####################
 
                     _inner_response = response
                     url = save_request_info(url, response)
                     response.raise_for_status()
-                    page_text = await response.text()
+
+                    try:
+                        # сначала пробуем как текст
+                        page_text = await response.text()
+                    except UnicodeDecodeError:
+                        # если не удалось декодировать — берём как бинарные данные
+                        page_text = await response.read()
+                    # page_text = await response.text()
+
                     _download_result = page_text
             elif self.http_method == "POST":
                 async with session.post(
@@ -83,15 +87,21 @@ class AiohttpDlTransport(BaseWebLoader):
                 ) as response:
                     #####################
                     # ДЛЯ ОТЛАДКИ: опциональная принудительная установка HTTP статусов
-                    response.status = (
-                        forced_http_status if forced_http_status else response.status
-                    )
+                    response.status = (forced_http_status if forced_http_status else response.status)
                     ####################
 
                     _inner_response = response
                     url = save_request_info(url, response)
                     response.raise_for_status()
-                    page_text = await response.text()
+
+                    try:
+                        # сначала пробуем как текст
+                        page_text = await response.text()
+                    except UnicodeDecodeError:
+                        # если не удалось декодировать — берём как бинарные данные
+                        page_text = await response.read()
+                    # page_text = await response.text()
+
                     _download_result = page_text
             else:
                 raise NotImplementedError(
