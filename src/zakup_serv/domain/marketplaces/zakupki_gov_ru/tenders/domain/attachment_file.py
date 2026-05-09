@@ -9,6 +9,7 @@ class AttachedFile:
     full_name: str | None # name.extension
     title: str | None # официальное название в блоке вложений в закупке
     link: str | None
+    full_name_with_uid: str | None # для сохранения в виде "{uid}_{name.extension}"
     content: str | bytes | None
 
 

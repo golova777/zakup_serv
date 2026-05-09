@@ -78,6 +78,7 @@ class TenderAttachmentsExtractor(DataProcessorInterface):
                 full_name = a.get("title").strip(),  # name.extension
                 title = a.get_text(strip=True),  # официальное название в блоке вложений в закупке
                 link = a.get("href").strip(),
+                full_name_with_uid = f"{self.extract_uid(a.get("href").strip())}_{a.get("title").strip()}",
                 content=None,
             )
             attachments.append(attachment)

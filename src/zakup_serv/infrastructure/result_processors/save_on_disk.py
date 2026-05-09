@@ -52,11 +52,14 @@ class SaveAnyOnDisk:
 
     @staticmethod
     async def a_process_it(
-        data: Any,
+        data: str | bytes | Any,
         filename: str,
         folders: list[str | Path] | Path | None = None,
     ) -> int:
-        data = str(data)
+
+        # для любых данных кроме bytes - преобразуем к строковому представлению
+        if not isinstance(data, bytes):
+            data = str(data)
 
         full_path = Path(SAVERS_DEFAULTS["SAVE_FOLDER"])
 
@@ -79,15 +82,22 @@ class SaveAnyOnDisk:
                         # имеем строку - преобразуем ее в Path и добавляем к пути сохранения
                         full_path = full_path / Path(folder)
 
-
         full_path.mkdir(parents=True, exist_ok=True)
         full_path = full_path / filename
 
-        # режим полной перезаписи файла
-        async with aiofiles.open(full_path, "w", encoding="utf-8") as f:
-            await f.write(data)
-            # print(f"Сохранено: {full_path}")
-        return len(data)
+        if isinstance(data, bytes):
+            # режим полной перезаписи файла в бинарном режиме
+            async with aiofiles.open(full_path, "wb") as f:
+                await f.write(data)
+            return len(data)
+        elif isinstance(data, str):
+            # режим полной перезаписи файла
+            async with aiofiles.open(full_path, "w", encoding="utf-8") as f:
+                await f.write(data)
+            return len(data)
+        else:
+            return 0
+
 
     def process_it(
         self,

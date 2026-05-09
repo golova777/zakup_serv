@@ -7,6 +7,7 @@ from zakup_serv.domain.marketplaces.zakupki_gov_ru.contracts.domain.contracts im
 )
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.domain.new_tenders import FzNewTenders
 from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.repos.file_system_repo import FileSystemTenderRepo
+from zakup_serv.domain.marketplaces.zakupki_gov_ru.tenders.tender_config import TENDER_MARKETPLACE_INFO
 from zakup_serv.infrastructure.logging_config import setup_logging
 from zakup_serv.infrastructure.result_processors.decorators import (
     net_stat_info,
@@ -17,34 +18,26 @@ async def async_main():
     # Запуск логирования
     setup_logging()
     logger = logging.getLogger(__name__)
-
     logger.info("Service starting")
-
-    ##########################
-    # callbacks = [
-    #     # SaveOnDisk().a_process_it,
-    #     # ContractNumsExtractor().process_it,
-    # ]
 
     regions = {
         "77000000000": "Moskva",
-        "50000000000":"Moskva obl",
+        # "50000000000":"Moskva obl",
         "44000000000": "Костромская область",
         "76000000000": "Yaroslavl region",
-        "33000000000": "Vladimir region",
-        "37000000000": "Ivanovo region",
+        # "33000000000": "Vladimir region",
+        # "37000000000": "Ivanovo region",
     }
 
     tenders = FzNewTenders(
         regions=regions,
-        repository=FileSystemTenderRepo(),
+        repository=FileSystemTenderRepo(TENDER_MARKETPLACE_INFO["EIS"]),
         # callbacks_on_result=callbacks,
     )
 
     await tenders.a_get_tenders(
         per_page_items=50,
-        concurrent=5,
-        from_date="07.05.2026",
+        publish_date="04.05.2026",
     )
 
     pprint(net_stat_info.calls_history)

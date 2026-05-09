@@ -20,12 +20,17 @@ class TenderQueryParams(Enum):
 
 TENDER_MARKETPLACE_INFO = {
     "EIS": {
+        "prefix_tender_save_dir": "tenders",
         "default_repository": FileSystemTenderRepo,
         "query_params": TenderQueryParams,
         "SAVE_FOLDER": "./saves/tenders/",
         "dwl_stages": {
             "tenders_pages": "1.tenders_pages",
             "tenders_data": "2.tenders_data",
+        },
+        "concurrency_strategy": {
+            "regions_in_parallel": 2,
+            "tenders_in_parallel": 20,
         },
         "db_limit_max_span_contracts": 5000,
         "base_url": "https://zakupki.gov.ru/epz/order/extendedsearch/results.html?"

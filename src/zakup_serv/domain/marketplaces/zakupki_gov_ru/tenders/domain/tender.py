@@ -12,5 +12,5 @@ class Tender:
     region_id: str
     publish_date: str
     tender_type: TenderType
-    content: Any | None = None
+    sections_content: Any | None = None
 
